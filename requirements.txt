@@ -1,0 +1,45 @@
+# newTouch — 依赖
+#
+# 推荐 Python 3.11 / 3.12（最稳）。3.14 也能跑，但部分包（如 funasr 的 editdistance
+# 依赖）在 3.14 下无预编译 wheel，需 C++ 编译器或用 `pip install funasr --no-deps`
+# 再手动补依赖。3.11 下 `pip install -r requirements.txt` 基本一把过。
+# 注意：numpy 2.x 要求 Python ≥ 3.11，不要低于 3.11。
+
+# ── 核心 ──
+anthropic>=0.105.0         # Claude API（LLM + VLM，anthropic 后端）
+openai>=2.40.0             # OpenAI 兼容后端（deepseek / 豆包 ARK 等）
+pyyaml>=6.0                # 配置
+httpx>=0.28.0              # GPT-SoVITS HTTP 调用
+numpy>=2.0                 # 音频数据处理（需 Python ≥ 3.11）
+
+# ── 语音输出（TTS 播放）──
+sounddevice>=0.5.0         # 音频播放（及录音）
+soundfile>=0.13.0          # 音频解码
+
+# ── 语音输入（STT + VAD）──
+silero-vad>=6.0            # 本地 VAD（依赖 torch）
+torch>=2.6                 # silero-vad / faster-whisper / funasr 共同依赖
+torchaudio>=2.6            # 音频加载后端
+
+# STT 引擎（二选一或都装，管理平台 modules.stt.provider 切换）：
+faster-whisper>=1.2.0      # 引擎A：多语言通用，CPU int8 约 1-2s/句
+# 引擎B：FunASR SenseVoice（中文专优、更快）。3.14 下若装失败见文件顶部说明。
+funasr>=1.3.0              # 框架（含 SenseVoice 加载/推理/后处理）
+modelscope>=1.37.0         # funasr 模型下载（ModelScope hub）
+transformers>=4.40.0       # funasr 依赖
+
+# ── 记忆（mem0 + 向量库）──
+mem0ai>=2.0.0              # 长期记忆抽取/检索
+chromadb>=1.5.0            # 本地向量库（mem0 后端）
+# mem0 NLP 增强（可选，提升记忆检索质量，推荐安装）：
+#   pip install mem0ai[nlp]  # 安装 spaCy 库
+#   python -m spacy download en_core_web_sm  # 下载英文模型
+# 注：Python 3.14 下 spaCy 暂无预编译包，需等后续支持或用 3.11/3.12
+
+# ── 视觉（VLM caption）──
+opencv-python>=4.9.0       # 摄像头抽帧 + 帧差检测
+
+# ── 管理平台（FastAPI WebUI）──
+fastapi>=0.110.0
+uvicorn>=0.30.0            # 0.30+ 修复了 websockets 弃用警告
+python-multipart>=0.0.9

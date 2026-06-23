@@ -1,0 +1,55 @@
+# 密钥 / 环境变量
+.env
+.env.local
+*.secret
+
+# 运行时数据（含用户隐私 + 大文件，不入库）
+# config.yaml 含真实 API key，不入库；提交 config.example.yaml 脱敏模板
+data/config.yaml
+data/config.local.yaml
+data/characters/
+data/memory_db/
+data/stt_cache/
+data/logs/
+data/voices/
+data/worldbooks/
+data/presets/
+data/audit.log
+data/error_log.txt
+error_log.txt
+
+# 文档（进度/决策/架构等，按约定不入库）
+docs/
+*.md
+!README.md
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# 备份文件
+*.backup
+*.bak
+*.bak-*
+
+# 模型 / 音频权重
+*.pt
+*.bin
+*.ckpt
+*.safetensors
+*.pth
+*.onnx
+*.wav
+*.mp3
+*.flac
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

@@ -1,0 +1,138 @@
+user_persona:
+  name: 你
+  description: ''
+  bound_worldinfo: null
+character:
+  name: 欸嘿
+  current_preset: ''
+  preset_enabled: true
+modules:
+  llm:
+    provider: deepseek
+    model: deepseek-chat
+    api_key: sk-YOUR_DEEPSEEK_KEY
+    base_url: https://api.deepseek.com/v1
+    temperature: 0.85
+    max_tokens: 1024
+  vlm:
+    provider: openai
+    model: ark-code-latest
+    api_key: YOUR_ARK_KEY
+    base_url: https://ark.cn-beijing.volces.com/api/coding/v3
+    caption_max_tokens: 512
+  stt:
+    provider: faster-whisper
+    model: small
+    device: cpu
+    compute_type: int8
+    language: zh
+    hf_endpoint: https://hf-mirror.com
+    download_root: ''
+    model_cache_dir: data/stt_cache
+    funasr_model: iic/SenseVoiceSmall
+    use_itn: true
+    keep_emotion_tags: true
+  tts:
+    provider: gpt-sovits
+    endpoint: http://127.0.0.1:9880
+    current_voice: 默认音色
+    enabled: false
+    ref_audio_path: D:\ai\audio\blueArchive\ailisi\all\Aris_LogIn_1.wav
+    prompt_text: ようこそ先生。アリスは先生を待っていました。
+    prompt_lang: ja
+    text_lang: ja
+    speed_factor: 1
+    text_split_method: cut0
+    top_k: 5
+    top_p: 1
+    temperature: 1
+    repetition_penalty: 1.35
+    batch_size: 1
+    fragment_interval: 0.3
+    parallel_infer: true
+  vad:
+    provider: silero
+    threshold: 0.5
+    min_silence_ms: 800
+perception:
+  vision:
+    enabled: true
+    camera_index: 0
+    frame_diff_threshold: 0.15
+    min_caption_interval_s: 10
+    min_look_interval_s: 30
+  audio:
+    enabled: false
+    device_index: null
+    sample_rate: 16000
+    dialog_window_seconds: 15
+    echo_cooldown_s: 0.6
+    global_wake_words:
+    - hey
+    - 嘿
+    - 喂
+proactive:
+  enabled: true
+  heartbeat_interval_range:
+  - 20
+  - 30
+  quiet_start: 00:00
+  quiet_end: 07:00
+  min_interval_seconds: 900
+  hourly_cap: 5
+  max_backoff_minutes: 240
+  loneliness_threshold: 0.4
+  clinginess: 0.5
+  ignored_grace_seconds: 300
+  recent_inner_max: 5
+ai_permissions:
+  allow_adjust_frequency: false
+  allow_switch_preset: false
+  allow_toggle_vision: false
+  allow_toggle_ui: false
+  allow_manage_schedules: false
+ui:
+  enable_visual_ui: false
+  enable_webui: true
+  webui_port: 8080
+  webui_host: 127.0.0.1
+memory:
+  enabled: true
+  provider: mem0
+  db_path: data/memory_db
+  llm_model: Doubao-Seed-2.0-lite
+  base_url: https://ark.cn-beijing.volces.com/api/coding/v3
+  embedding_model: doubao-embedding-vision
+  embed_base_url: https://ark.cn-beijing.volces.com/api/coding/v3
+  infer: true
+  extract: true
+  chat_history_window: 100
+  compress_enabled: true
+  compress_batch_size: 10
+  reflect_daily: false
+  reflect_time: 00:05
+  api_key: YOUR_ARK_KEY
+  embed_api_key: YOUR_ARK_KEY
+worldinfo:
+  budget_chars: 2000
+global_worldbooks: []
+limits:
+  daily_output_tokens: 0
+  warn_at_percent: 80
+  degraded_mode: local_only
+token_intensive:
+  vision_direct_image: false
+  proactive_cot: true
+  long_chat_window: 40
+  memory_query_generation: true
+  multi_round_vision: false
+  reactive_memory_recall: false
+  emotion_sync: false
+  worldbook_llm_filter: false
+  multi_agent_validation: false
+  persistent_consciousness: false
+logging:
+  enabled: true
+  level: DEBUG
+  dir: data/logs
+  backup_count: 14

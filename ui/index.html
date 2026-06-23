@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>newTouch 管理平台</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#0f1117;color:#e2e8f0;font-size:14px;height:100vh;display:flex;flex-direction:column}
+header{padding:12px 20px;background:#1a1d26;border-bottom:1px solid #2d3148;display:flex;align-items:center;gap:10px;flex-shrink:0}
+header h1{font-size:15px;font-weight:600}
+nav{display:flex;gap:2px;padding:8px 16px 0;background:#1a1d26;border-bottom:1px solid #2d3148;flex-shrink:0}
+nav button{background:none;border:none;color:#94a3b8;padding:7px 13px;cursor:pointer;border-bottom:2px solid transparent;font-size:13px}
+nav button.active{color:#e2e8f0;border-bottom-color:#818cf8}
+.content{flex:1;overflow:auto;padding:18px 20px}
+.card{background:#1a1d26;border:1px solid #2d3148;border-radius:8px;padding:14px;margin-bottom:12px}
+.card-title{font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px}
+.card-title::before{content:"▸";font-size:10px;transition:.15s}
+.card-title.open::before{content:"▾"}
+.card-body{display:none}.card-body.open{display:block}
+.field-row{display:grid;grid-template-columns:160px 1fr;align-items:center;gap:8px;margin-bottom:8px}
+.field-row label{color:#94a3b8;font-size:12px;text-align:right}
+.field-help{grid-column:2;color:#64748b;font-size:11px;margin-top:-2px;line-height:1.4}
+.restart-badge{display:inline-block;margin-left:6px;padding:0 6px;border-radius:8px;font-size:10px;background:#422006;color:#fbbf24;border:1px solid #854d0e;vertical-align:middle}
+input[type=text],input[type=password],input[type=number],select,textarea{width:100%;background:#0f1117;border:1px solid #2d3148;border-radius:4px;color:#e2e8f0;padding:5px 8px;font-size:13px}
+textarea{resize:vertical;min-height:60px;font-family:inherit}
+input[type=number]{width:100px}
+.toggle{position:relative;width:34px;height:18px;display:inline-block}
+.toggle input{opacity:0;width:0;height:0}
+.slider{position:absolute;inset:0;background:#2d3148;border-radius:18px;cursor:pointer;transition:.2s}
+.slider::before{content:"";position:absolute;width:12px;height:12px;left:3px;bottom:3px;background:#64748b;border-radius:50%;transition:.2s}
+input:checked+.slider{background:#4f46e5}
+input:checked+.slider::before{background:#fff;transform:translateX(16px)}
+.btn{padding:6px 14px;border-radius:4px;border:none;cursor:pointer;font-size:13px;background:#2d3148;color:#e2e8f0}
+.btn-primary{background:#4f46e5;color:#fff}
+.btn-sm{padding:3px 9px;font-size:12px}
+.btn-danger{background:#7f1d1d;color:#fca5a5}
+.msg{padding:6px 10px;border-radius:4px;margin-bottom:8px;font-size:12px}
+.msg-ok{background:#14532d;color:#86efac}.msg-err{background:#7f1d1d;color:#fca5a5}
+/* 聊天 */
+.chat-wrap{display:flex;flex-direction:column;height:calc(100vh - 110px)}
+.chat-msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+.msg-user{align-self:flex-end;background:#312e81;border-radius:12px 12px 2px 12px;padding:8px 12px;max-width:70%;font-size:13px}
+.msg-ai{align-self:flex-start;background:#1e293b;border-radius:12px 12px 12px 2px;padding:8px 12px;max-width:70%;font-size:13px}
+.msg-ts{font-size:10px;color:#475569;margin-top:3px}
+.chat-input{display:flex;gap:8px;padding:10px;border-top:1px solid #2d3148}
+.chat-input input{flex:1;background:#1a1d26;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:8px 12px;font-size:13px}
+/* 意识流 */
+.tl-row{display:grid;grid-template-columns:120px 64px 1fr 120px;gap:8px;padding:7px 0;border-bottom:1px solid #1e2130;font-size:12px;align-items:start}
+.tl-scroll{max-height:calc(100vh - 320px);min-height:160px;overflow-y:auto}
+.tl-row:last-child{border-bottom:none}
+.tag{display:inline-block;padding:1px 6px;border-radius:10px;font-size:11px}
+.tag-speak{background:#1e3a5f;color:#93c5fd}
+.tag-silent{background:#1f2937;color:#6b7280}
+.tag-look{background:#1a2e1a;color:#86efac}
+.thought{color:#94a3b8;font-style:italic;font-size:11px;margin-top:2px}
+.ts{color:#475569}
+/* 情绪 */
+.emo-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.emo-row label{width:80px;flex-shrink:0;color:#94a3b8;font-size:12px;text-align:right}
+.bar-bg{flex:1;height:7px;background:#2d3148;border-radius:4px;overflow:hidden}
+.bar{height:100%;border-radius:4px;transition:width .4s}
+/* 权限 */
+.perm-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #1e2130}
+.perm-row:last-child{border-bottom:none}
+/* 世界书 */
+.wb-entry{border:1px solid #2d3148;border-radius:6px;padding:10px;margin-bottom:8px}
+.wb-entry-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.empty{color:#475569;font-size:12px;padding:8px 0}
+.pencil-btn{background:none;border:none;color:#64748b;font-size:15px;cursor:pointer;padding:2px 4px;border-radius:3px;transition:.15s}
+.pencil-btn:hover{color:#e2e8f0;background:#2d3148}
+.rename-pop{position:absolute;left:0;top:calc(100% + 4px);background:#1a1d26;border:1px solid #4f46e5;border-radius:6px;padding:8px;display:flex;gap:6px;align-items:center;z-index:100;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)}
+.toast{position:fixed;top:64px;left:50%;transform:translateX(-50%);padding:10px 22px;border-radius:6px;font-size:13px;z-index:9999;pointer-events:none;transition:opacity .3s}
+.toast-ok{background:#14532d;color:#86efac;border:1px solid #166534}
+.toast-err{background:#7f1d1d;color:#fca5a5;border:1px solid #991b1b}
+/* 日志 */
+.log-row{display:grid;grid-template-columns:70px 70px 80px 1fr;gap:8px;padding:4px 0;border-bottom:1px solid #1e2130;font-size:12px;align-items:start}
+.log-row pre{font-size:12px;line-height:1.4}
+.log-ts{color:#475569;font-family:monospace}
+.log-lvl{font-weight:600;font-size:11px;text-align:center}
+.log-mod{color:#94a3b8;font-size:11px}
+.log-msg{word-break:break-word;color:#cbd5e1}
+.log-debug .log-lvl{color:#64748b}
+.log-info .log-lvl{color:#60a5fa}
+.log-warning .log-lvl{color:#fbbf24}
+.log-warning .log-msg{color:#fde68a}
+.log-error .log-lvl{color:#f87171}
+.log-error .log-msg{color:#fca5a5}
+.log-critical .log-lvl{color:#f87171}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- 全局 toast：固定在顶部居中，所有 Tab 保存/操作提示共用 -->
+  <div v-if="toast.text" class="toast" :class="toast.ok?'toast-ok':'toast-err'">{{toast.text}}</div>
+  <header>
+    <span style="font-size:18px">⚙</span>
+    <h1>newTouch 管理平台</h1>
+    <span style="margin-left:auto;font-size:11px;color:#475569">loopback only</span>
+  </header>
+  <nav>
+    <button v-for="t in tabs" :class="{active:tab===t.id}" @click="tab=t.id">{{t.label}}</button>
+  </nav>
+  <div class="content">
+
+    <!-- 聊天 -->
+    <div v-if="tab==='chat'" class="chat-wrap">
+      <div class="chat-msgs" ref="msgBox">
+        <div v-for="m in chatMsgs" :class="m.role==='user'?'msg-user':'msg-ai'">
+          <div>{{m.text}}</div>
+          <div class="msg-ts">{{m.ts?.replace('T',' ')}}</div>
+        </div>
+        <div v-if="!chatMsgs.length" class="empty">暂无聊天记录</div>
+      </div>
+      <div class="chat-input">
+        <input v-model="chatInput" @keydown.enter="sendChat" placeholder="发送消息（Enter）…">
+        <button class="btn btn-primary" @click="sendChat">发送</button>
+        <button class="btn btn-sm" @click="loadChat">刷新</button>
+      </div>
+    </div>
+
+    <!-- 观测面板 -->
+    <div v-if="tab==='observe'">
+      <div class="card">
+        <div class="card-title open" @click="toggleCard('emo')">实时情绪</div>
+        <div class="card-body open" v-if="cards.emo">
+          <div class="emo-row" v-for="k in emoKeys">
+            <label>{{k}}</label>
+            <div class="bar-bg"><div class="bar" :style="{width:emoPct(k)+'%',background:emoColor(k)}"></div></div>
+            <span style="font-size:11px;color:#475569;width:32px;text-align:right">{{emoPct(k)}}%</span>
+          </div>
+          <button class="btn btn-sm" style="margin-top:6px" @click="loadState">刷新</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title open" @click="toggleCard('cons')">
+          意识流时间线
+          <select v-model="consFilter" @change="loadCons" style="margin-left:8px;width:110px;font-size:12px" @click.stop>
+            <option value="">全部</option>
+            <option value="monologue">仅内心独白</option>
+            <option value="speak">speak</option>
+            <option value="silent">silent</option>
+            <option value="look">look</option>
+          </select>
+          <button class="btn btn-sm" @click.stop="loadCons" style="margin-left:4px">刷新</button>
+        </div>
+        <div class="card-body open" v-if="cards.cons">
+          <div class="tl-row" style="font-size:11px;color:#475569;font-weight:600">
+            <div>时间</div><div>动作</div><div>内容/想法</div><div>闸门</div>
+          </div>
+          <div class="tl-scroll">
+            <div class="tl-row" v-for="c in cons">
+              <div class="ts">{{c.ts?.slice(0,16).replace('T',' ')}}</div>
+              <div><span class="tag" :class="'tag-'+c.action">{{c.action}}</span></div>
+              <div>
+                <div>{{c.text||c.trigger}}</div>
+                <div class="thought" v-if="c.thought">💭 {{c.thought}}</div>
+              </div>
+              <div style="color:#475569;font-size:11px">{{c.gate}}</div>
+            </div>
+            <div class="empty" v-if="!cons.length">暂无数据</div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title" @click="toggleCard('audit')">审计日志（AI 自我配置）<button class="btn btn-sm" @click.stop="loadAudit" style="margin-left:8px">刷新</button></div>
+        <div class="card-body" v-if="cards.audit">
+          <div style="display:grid;grid-template-columns:120px 130px 1fr 100px;gap:8px;font-size:11px;color:#475569;padding:4px 0;font-weight:600">
+            <div>时间</div><div>工具</div><div>参数</div><div>结果</div>
+          </div>
+          <div v-for="a in audit" style="display:grid;grid-template-columns:120px 130px 1fr 100px;gap:8px;padding:6px 0;border-bottom:1px solid #1e2130;font-size:12px">
+            <div class="ts">{{a.timestamp?.slice(0,16).replace('T',' ')}}</div>
+            <div>{{a.tool}}</div>
+            <div>{{JSON.stringify(a.args)}}</div>
+            <div :style="{color:a.result==='OK'?'#86efac':'#fca5a5'}">{{a.result?.slice(0,30)}}</div>
+          </div>
+          <div class="empty" v-if="!audit.length">暂无审计记录</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 结构化配置 -->
+    <div v-if="tab==='config'">
+      <div class="card" v-for="sec in schema">
+        <div class="card-title open" :class="{open:openSecs[sec.section]}" @click="openSecs[sec.section]=!openSecs[sec.section]">{{sec.section}}</div>
+        <div class="card-body" :class="{open:openSecs[sec.section]}">
+          <div class="field-row" v-for="f in sec.fields">
+            <label>{{f.label}}<span v-if="f.restart" class="restart-badge" title="此项改动需重启 main.py 才生效">需重启</span></label>
+            <!-- 角色目录下拉：切换即时生效 -->
+            <select v-if="f.type==='char_select'" :value="getCfgVal(sec.key,f.k)" @change="switchCharacter($event.target.value)">
+              <option v-for="c in cardList" :value="c.id">{{c.name}}</option>
+            </select>
+            <!-- 预设开关：即时生效 -->
+            <label v-else-if="f.type==='preset_toggle'" class="toggle">
+              <input type="checkbox" :checked="getCfgVal(sec.key,f.k)!==false" @change="setPresetEnabled($event.target.checked)">
+              <span class="slider"></span>
+            </label>
+            <!-- 预设下拉：选中即时切换 -->
+            <select v-else-if="f.type==='preset_select'" :value="getCfgVal(sec.key,f.k)" @change="switchPreset($event.target.value)" :disabled="getCfgVal(sec.key,'preset_enabled')===false">
+              <option value="">（不使用）</option>
+              <option v-for="n in presetList" :value="n">{{n}}</option>
+            </select>
+            <!-- 说明信息（只读，不可编辑） -->
+            <div v-else-if="f.type==='info'" style="padding:8px 12px;background:#f1f5f9;border-radius:6px;color:#475569;font-size:12px;line-height:1.5">
+              {{f.help || f.label}}
+            </div>
+            <label v-else-if="f.type==='toggle'" class="toggle">
+              <input type="checkbox" :checked="getCfgVal(sec.key,f.k)" @change="setCfgVal(sec.key,f.k,$event.target.checked)">
+              <span class="slider"></span>
+            </label>
+            <select v-else-if="f.type==='select'" :value="getCfgVal(sec.key,f.k)" @change="setCfgVal(sec.key,f.k,$event.target.value)">
+              <option v-for="o in f.options" :value="o.value!==undefined?o.value:o">{{o.label!==undefined?o.label:o}}</option>
+            </select>
+            <textarea v-else-if="f.type==='textarea'" :value="getCfgVal(sec.key,f.k)" @input="setCfgVal(sec.key,f.k,$event.target.value)" rows="3"></textarea>
+            <input v-else :type="f.type==='password'?'text':f.type" :value="getCfgVal(sec.key,f.k)"
+              @input="setCfgVal(sec.key,f.k,f.type==='number'?+$event.target.value:$event.target.value)"
+              :min="f.min" :max="f.max" :step="f.step">
+            <div v-if="f.help && f.type!=='info'" class="field-help">{{f.help}}</div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:4px 0 12px">
+        <button class="btn btn-primary" @click="saveCfg">保存所有配置</button>
+        <span style="margin-left:10px;font-size:11px;color:#64748b">保存后多数配置即时生效；标「需重启」的项改完需重启 main.py。</span>
+      </div>
+    </div>
+
+    <!-- 权限 -->
+    <div v-if="tab==='perm'">
+      <div class="card">
+        <div class="card-title open">AI 权限白名单</div>
+        <p style="color:#64748b;font-size:12px;margin-bottom:12px">控制 ta 能通过工具自主改什么，默认全关。</p>
+        <div class="perm-row" v-for="(v,k) in perms">
+          <div>
+            <div>{{permLabel[k]||k}}</div>
+            <div style="font-size:11px;color:#475569;margin-top:2px">{{permDesc[k]}}</div>
+          </div>
+          <label class="toggle"><input type="checkbox" v-model="perms[k]"><span class="slider"></span></label>
+        </div>
+        <div style="margin-top:12px"><button class="btn btn-primary" @click="savePerms">保存权限</button></div>
+      </div>
+    </div>
+
+    <!-- 角色卡 -->
+    <div v-if="tab==='card'">
+      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+        <select v-model="cardName" @change="loadCard" style="width:140px">
+          <option v-for="c in cardList" :value="c.id">{{c.name}}</option>
+        </select>
+        <span style="position:relative;display:inline-flex">
+          <button class="pencil-btn" v-if="cardName" title="修改角色卡名称"
+                  @click="openRename">✎</button>
+          <div class="rename-pop" v-if="renaming" @click.stop>
+            <input v-model="cardRenameVal" placeholder="新名称" @keydown.enter="renameCard"
+                   ref="renameInput" style="width:130px">
+            <button class="btn btn-primary btn-sm" @click="renameCard" :disabled="!cardRenameVal.trim()">确定</button>
+            <button class="btn btn-sm" @click="renaming=false">取消</button>
+          </div>
+        </span>
+        <input v-model="cardNewName" placeholder="新建角色名" style="width:130px;margin-left:8px">
+        <button class="btn btn-primary btn-sm" @click="createCard">新建</button>
+        <button class="btn btn-danger btn-sm" v-if="cardName" @click="deleteCard" style="margin-left:auto">删除当前角色</button>
+      </div>
+      <div class="card" v-if="cardData">
+        <div class="field-row" v-for="f in cardFields">
+          <label>{{f.label}}</label>
+          <textarea v-if="f.multi" v-model="cardData[f.k]" :rows="f.rows||3"></textarea>
+          <input v-else v-model="cardData[f.k]">
+        </div>
+        <!-- 世界书绑定 -->
+        <div style="border-top:1px solid #2d3148;margin-top:10px;padding-top:10px">
+          <div style="font-size:12px;color:#64748b;margin-bottom:8px">世界书绑定（可绑多个，激活时合并扫描）</div>
+          <div class="field-row">
+            <label>主世界书</label>
+            <select v-model="cardWorld">
+              <option value="">（无）</option>
+              <option v-for="n in wbAllList" :value="n">{{n}}</option>
+            </select>
+          </div>
+          <div class="field-row">
+            <label>附加世界书</label>
+            <div>
+              <div v-for="n in wbAllList" style="display:inline-flex;align-items:center;gap:4px;margin:0 12px 4px 0">
+                <input type="checkbox" :value="n" :checked="cardWorldAdd.includes(n)" @change="toggleWorldAdd(n)">
+                <span style="font-size:12px">{{n}}</span>
+              </div>
+              <div class="empty" v-if="!wbAllList.length">无世界书，去「世界书」Tab 新建</div>
+            </div>
+          </div>
+          <div class="field-row">
+            <label>语音库</label>
+            <select v-model="cardVoiceLib">
+              <option value="">（默认 library）</option>
+              <option v-for="n in voiceLibList" :value="n">{{n}}</option>
+            </select>
+          </div>
+          <div class="field-row">
+            <label>唤醒词</label>
+            <div style="flex:1">
+              <input v-model="cardWakeWords" placeholder="多个词用逗号分隔，如：小爱,Alice,艾丽丝" style="width:100%">
+              <div class="field-help" style="margin-top:4px">
+                自定义唤醒词（可选）。留空则自动使用角色名。通用词（hey/嘿/喂）在 config.yaml 的 global_wake_words 配置。
+              </div>
+            </div>
+          </div>
+          <div class="field-row">
+            <label>黏人度</label>
+            <input type="range" min="0" max="1" step="0.05"
+              :value="cardData?.extensions?.clinginess ?? 0.5"
+              @input="e => { if(cardData){ (cardData.extensions||={}).clinginess = +e.target.value } }">
+            <span style="margin-left:6px;min-width:30px">{{(cardData?.extensions?.clinginess ?? 0.5).toFixed(2)}}</span>
+            <span class="field-help" style="margin-left:8px">0=独立退避 0.5=中性 1=焦虑追问</span>
+          </div>
+          <div class="field-row">
+            <label>回复语言</label>
+            <div style="flex:1">
+              <select v-model="cardReplyLang" style="width:100%">
+                <option value="">（跟随 TTS 语言）</option>
+                <option value="zh">中文</option>
+                <option value="en">English</option>
+                <option value="ja">日本語</option>
+                <option value="ko">한국어</option>
+                <option value="fr">français</option>
+                <option value="de">Deutsch</option>
+                <option value="es">español</option>
+                <option value="ru">русский</option>
+              </select>
+              <div class="field-help" style="margin-top:4px">
+                AI 回复使用的语言。留空则跟随配置页面的 TTS 语言设置。
+              </div>
+            </div>
+          </div>
+          <div class="field-row">
+            <label>翻译语言</label>
+            <div style="flex:1">
+              <select v-model="cardTranslationLang" style="width:100%">
+                <option value="">（不翻译）</option>
+                <option value="zh">中文</option>
+                <option value="en">English</option>
+                <option value="ja">日本語</option>
+                <option value="ko">한국어</option>
+                <option value="fr">français</option>
+                <option value="de">Deutsch</option>
+                <option value="es">español</option>
+                <option value="ru">русский</option>
+              </select>
+              <div class="field-help" style="margin-top:4px">
+                当回复语言与此不同时，在每句后附上翻译。留空则不翻译。例如：回复语言=日语，翻译语言=中文，则回复「こんにちは（你好）」
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:10px"><button class="btn btn-primary" @click="saveCard">保存角色卡</button></div>
+      </div>
+    </div>
+
+    <!-- 预设 -->
+    <div v-if="tab==='preset'">
+      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+        <select v-model="presetName" @change="loadPreset" style="width:160px">
+          <option v-for="n in presetList" :value="n">{{n}}</option>
+        </select>
+        <input v-model="presetNewName" placeholder="新建预设名" style="width:120px">
+        <button class="btn btn-primary btn-sm" @click="createPreset">新建</button>
+        <button class="btn btn-danger btn-sm" v-if="presetName" @click="deletePreset">删除</button>
+      </div>
+      <div class="card" v-if="presetDoc">
+        <p style="color:#64748b;font-size:12px;margin-bottom:12px">
+          提示词预设叠加到角色定义上。{{char}} 替换角色名，{{user}} 替换用户名。
+        </p>
+        <div class="field-row">
+          <label>全局 system</label>
+          <textarea v-model="presetDoc.system_prompt" rows="4" placeholder="拼在 system 最前（补充/覆盖角色定义前的全局指令）"></textarea>
+        </div>
+        <div class="field-row">
+          <label>破限 (jailbreak)</label>
+          <textarea v-model="presetDoc.jailbreak" rows="4" placeholder="拼在 system 末尾，最强位置"></textarea>
+        </div>
+        <div class="field-row">
+          <label>历史后指令</label>
+          <textarea v-model="presetDoc.post_history" rows="3" placeholder="拼在角色卡 post_history_instructions 之后"></textarea>
+        </div>
+        <div style="margin-top:10px"><button class="btn btn-primary" @click="savePreset">保存预设</button></div>
+      </div>
+    </div>
+
+    <!-- 世界书 -->
+    <div v-if="tab==='wb'">
+      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+        <select v-model="wbName" @change="loadWb" style="width:160px">
+          <option v-for="n in wbList" :value="n">{{n}}</option>
+        </select>
+        <input v-model="wbNewName" placeholder="新建名称" style="width:120px">
+        <button class="btn btn-sm btn-primary" @click="createWb">新建</button>
+        <button class="btn btn-danger btn-sm" v-if="wbName" @click="deleteWb">删除</button>
+      </div>
+      <div v-if="wbDoc">
+        <div style="margin-bottom:8px;display:flex;gap:8px;align-items:center">
+          <span style="color:#94a3b8;font-size:12px">共 {{wbDoc.entries?.length||0}} 条</span>
+          <button class="btn btn-sm btn-primary" @click="addWbEntry">+ 新增条目</button>
+          <button class="btn btn-primary" style="margin-left:auto" @click="saveWb">保存世界书</button>
+        </div>
+        <div class="wb-entry" v-for="(e,i) in wbDoc.entries">
+          <div class="wb-entry-hd">
+            <span style="font-size:12px;color:#64748b">条目 {{i+1}}</span>
+            <div style="display:flex;gap:6px;align-items:center">
+              <label class="toggle" title="禁用"><input type="checkbox" :checked="!e.disable" @change="e.disable=!$event.target.checked"><span class="slider"></span></label>
+              <button class="btn btn-danger btn-sm" @click="wbDoc.entries.splice(i,1)">删</button>
+            </div>
+          </div>
+          <div class="field-row">
+            <label>主关键词</label>
+            <input :value="e.key?.join(', ')" @input="e.key=$event.target.value.split(',').map(s=>s.trim()).filter(Boolean)" placeholder="逗号分隔">
+          </div>
+          <div class="field-row">
+            <label>次关键词</label>
+            <input :value="e.keysecondary?.join(', ')" @input="e.keysecondary=$event.target.value.split(',').map(s=>s.trim()).filter(Boolean)" placeholder="逗号分隔">
+          </div>
+          <div class="field-row">
+            <label>内容</label>
+            <textarea v-model="e.content" rows="3"></textarea>
+          </div>
+          <div class="grid2">
+            <div class="field-row">
+              <label>位置</label>
+              <select v-model="e.position"><option>before</option><option>after</option><option>depth</option></select>
+            </div>
+            <div class="field-row">
+              <label>顺序</label>
+              <input type="number" v-model.number="e.order" style="width:80px">
+            </div>
+            <div class="field-row">
+              <label>常驻</label>
+              <label class="toggle"><input type="checkbox" v-model="e.constant"><span class="slider"></span></label>
+            </div>
+            <div class="field-row">
+              <label>启用次关键词</label>
+              <label class="toggle"><input type="checkbox" v-model="e.selective"><span class="slider"></span></label>
+            </div>
+          </div>
+        </div>
+        <div class="empty" v-if="!wbDoc.entries?.length">无条目，点击「新增条目」开始</div>
+      </div>
+    </div>
+
+    <!-- 语音库（多文件 + 角色绑定） -->
+    <div v-if="tab==='voices'">
+      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+        <select v-model="vlName" @change="loadVoiceLib" style="width:160px">
+          <option v-for="n in vlList" :value="n">{{n}}</option>
+        </select>
+        <input v-model="vlNewName" placeholder="新建库名" style="width:120px">
+        <button class="btn btn-sm btn-primary" @click="createVoiceLib">新建</button>
+        <button class="btn btn-danger btn-sm" v-if="vlName && vlName!=='library'" @click="delVoiceLib">删除</button>
+      </div>
+      <div v-if="vlDoc">
+        <!-- 模型权重 -->
+        <div class="card" style="margin-bottom:10px">
+          <div style="font-size:12px;color:#64748b;margin-bottom:8px">GPT-SoVITS 模型权重（切角色时自动应用，或手动点切换）</div>
+          <div class="field-row">
+            <label>GPT 权重路径</label>
+            <input v-model="vlDoc.gpt_weights" placeholder="如 GPT_weights_v2ProPlus/Alice-e15.ckpt">
+          </div>
+          <div class="field-row">
+            <label>SoVITS 权重路径</label>
+            <input v-model="vlDoc.sovits_weights" placeholder="如 SoVITS_weights_v2ProPlus/Alice_e8_s192.pth">
+          </div>
+          <div style="margin-top:8px;display:flex;gap:8px">
+            <button class="btn btn-primary btn-sm" @click="switchVoiceModel">立即切换模型</button>
+            <span style="font-size:12px;color:#64748b;line-height:28px">{{switchModelResult}}</span>
+          </div>
+        </div>
+        <!-- 情绪档 -->
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;margin-bottom:10px;align-items:center">
+            <span style="font-size:12px;color:#64748b">情绪档 — 主脑回复时按 &lt;emo:情绪&gt; 标签自动选参考音频</span>
+            <span style="display:flex;gap:6px">
+              <input v-model="vlNewEmo" placeholder="情绪名(如 happy)" style="width:130px">
+              <button class="btn btn-sm btn-primary" @click="addVlEmo">+ 新增情绪</button>
+            </span>
+          </div>
+          <div v-if="!Object.keys(vlDoc.emotions||{}).length" class="empty">暂无情绪档，点击新增</div>
+          <div class="wb-entry" v-for="(info,emo) in (vlDoc.emotions||{})">
+            <div class="wb-entry-hd">
+              <span style="font-size:13px;color:#93c5fd;font-weight:600">{{emo}}</span>
+              <button class="btn btn-danger btn-sm" @click="delete vlDoc.emotions[emo]">删除情绪</button>
+            </div>
+            <!-- 多参考音频：兼容旧格式自动转换 -->
+            <div v-for="(ref, idx) in getEmoRefs(emo)" :key="idx" style="border-left:2px solid #475569;padding-left:12px;margin-bottom:8px">
+              <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+                <span style="font-size:11px;color:#94a3b8">参考音频 {{idx + 1}}</span>
+                <button class="btn btn-danger btn-sm" style="padding:2px 8px;font-size:11px" @click="removeEmoRef(emo, idx)">删除</button>
+              </div>
+              <div class="field-row">
+                <label>音频路径</label>
+                <input v-model="ref.ref_audio_path" placeholder="如 D:\\...\\happy.wav">
+              </div>
+              <div class="field-row">
+                <label>参考文字</label>
+                <input v-model="ref.prompt_text" placeholder="参考音频对应的文字">
+              </div>
+              <div class="field-row">
+                <label>参考语言</label>
+                <select v-model="ref.prompt_lang">
+                  <option value="zh">zh</option><option value="en">en</option>
+                  <option value="ja">ja</option><option value="ko">ko</option>
+                  <option value="yue">yue</option><option value="auto">auto</option>
+                </select>
+              </div>
+            </div>
+            <button class="btn btn-sm" style="margin-top:6px" @click="addEmoRef(emo)">+ 添加参考音频</button>
+          </div>
+          <div style="margin-top:10px"><button class="btn btn-primary" @click="saveVoiceLib">保存语音库</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 系统日志 -->
+    <div v-if="tab==='logs'">
+      <div class="card">
+        <div class="card-title" :class="{open:cards.logs}" @click="toggleCard('logs')">
+          系统日志
+          <select v-model="logLevel" @change="loadLogs" @click.stop style="margin-left:8px;width:110px;font-size:12px">
+            <option value="">全部级别</option>
+            <option value="DEBUG">DEBUG</option>
+            <option value="INFO">INFO</option>
+            <option value="WARNING">WARNING</option>
+            <option value="ERROR">ERROR</option>
+          </select>
+          <select v-model="logModule" @change="loadLogs" @click.stop style="margin-left:4px;width:130px;font-size:12px">
+            <option value="">全部模块</option>
+            <option v-for="m in logModules" :value="m">{{m}}</option>
+          </select>
+          <label @click.stop style="margin-left:8px;font-size:12px;color:#475569;display:inline-flex;align-items:center;gap:4px">
+            <input type="checkbox" v-model="logAuto"> 自动刷新
+          </label>
+          <button class="btn btn-sm" @click.stop="loadLogs" style="margin-left:6px">刷新</button>
+          <button class="btn btn-sm" @click.stop="clearLogView" style="margin-left:4px">清空显示</button>
+        </div>
+        <div class="card-body open" v-if="cards.logs">
+          <div class="tl-scroll" style="max-height:70vh">
+            <div v-for="(l,i) in logs" :key="i" class="log-row" :class="'log-'+l.level.toLowerCase()">
+              <span class="log-ts">{{l.ts?.slice(11)}}</span>
+              <span class="log-lvl">{{l.level}}</span>
+              <span class="log-mod">{{l.module}}</span>
+              <span class="log-msg"><pre style="margin:0;white-space:pre-wrap;font-family:inherit">{{l.msg}}</pre></span>
+            </div>
+            <div class="empty" v-if="!logs.length">暂无日志</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script>
+const { createApp, ref, reactive, computed, onMounted, nextTick, watch } = Vue
+
+createApp({
+  setup() {
+    const tabs = [
+      {id:'chat',label:'聊天'},
+      {id:'observe',label:'观测'},
+      {id:'config',label:'配置'},
+      {id:'perm',label:'权限'},
+      {id:'card',label:'角色卡'},
+      {id:'preset',label:'预设'},
+      {id:'wb',label:'世界书'},
+      {id:'voices',label:'语音库'},
+      {id:'logs',label:'日志'},
+    ]
+    const tab = ref('chat')
+    const toast = reactive({text:'', ok:true})
+    let _toastTimer = null
+    function showToast(msg, ok=true) {
+      if (_toastTimer) clearTimeout(_toastTimer)
+      toast.text = msg; toast.ok = ok
+      _toastTimer = setTimeout(() => { toast.text = '' }, 3000)
+    }
+    watch(tab, t => {
+      if (t==='chat') loadChat()
+      if (t==='observe') { loadState(); loadCons(); }
+      if (t==='config') { loadCfg(); loadCardList(); loadPresetList(); }
+      if (t==='perm') loadPerms()
+      if (t==='card') loadCardList()
+      if (t==='preset') loadPresetList()
+      if (t==='wb') loadWbList()
+      if (t==='voices') loadVlList()
+      if (t==='logs') loadLogs()
+    })
+
+    // ── 聊天 ──────────────────────────────────────────────────
+    const chatMsgs = ref([])
+    const chatInput = ref('')
+    const msgBox = ref(null)
+    let sending = false   // 发送进行中：暂停全局轮询覆盖，避免抹掉乐观消息
+
+    // 用末条消息(ts+role+text)+条数生成签名，比 length 可靠（满80条时 length 不变也能识别新消息）
+    function sig(msgs) {
+      if (!msgs || !msgs.length) return '0'
+      const last = msgs[msgs.length - 1]
+      return msgs.length + '|' + (last.ts||'') + '|' + (last.role||'') + '|' + (last.text||'').slice(0,40)
+    }
+    async function scrollBottom() {
+      await nextTick()
+      if (msgBox.value) msgBox.value.scrollTop = msgBox.value.scrollHeight
+    }
+    async function loadChat() {
+      chatMsgs.value = await fetch('/api/chat/history?limit=80',{cache:'no-store'}).then(r=>r.json())
+      await scrollBottom()
+    }
+    async function sendChat() {
+      const text = chatInput.value.trim()
+      if (!text) return
+      chatInput.value = ''
+      sending = true
+      // 发送前服务端已确认的条数（此时 chatMsgs 还没乐观 push）作为基准
+      const baseCount = chatMsgs.value.length
+      // 乐观显示
+      chatMsgs.value.push({ts: new Date().toISOString().slice(0,19), role:'user', text})
+      await scrollBottom()
+      try {
+        const r = await fetch('/api/chat/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})})
+        if (!r.ok) { chatMsgs.value.push({ts:'',role:'assistant',text:'[发送失败: orchestrator 未连接]'}); return }
+        // 轮询等 ta 回复（最多 30s）。关键：每轮都无条件用服务端数据刷新界面，
+        // 不再把"赋值给 chatMsgs"锁在判断条件里——否则拿到数据也不渲染。
+        // break 仅作"提前停止轮询"的优化：服务端已落 user+assistant 且末条是 assistant。
+        for (let i=0; i<30; i++) {
+          await new Promise(r=>setTimeout(r,1000))
+          const msgs = await fetch('/api/chat/history?limit=80',{cache:'no-store'}).then(r=>r.json())
+          chatMsgs.value = msgs          // 始终反映服务端真相
+          await scrollBottom()
+          const last = msgs[msgs.length - 1]
+          if (msgs.length > baseCount + 1 && last && last.role === 'assistant') break
+        }
+      } finally {
+        sending = false
+      }
+    }
+
+    // ── 观测 ──────────────────────────────────────────────────
+    const cons = ref([])
+    const consFilter = ref('')
+    const audit = ref([])
+    const liveState = ref({})
+    const emoKeys = ['valence','arousal','attachment','worry','loneliness']
+    const emoColors = {valence:'#818cf8',arousal:'#f59e0b',attachment:'#ec4899',worry:'#f87171',loneliness:'#64748b'}
+    const cards = reactive({emo:true,cons:true,audit:false,logs:true})
+    function toggleCard(k) { cards[k]=!cards[k] }
+
+    // ── 日志 ──────────────────────────────────────────────────
+    const logs = ref([])
+    const logLevel = ref('')
+    const logModule = ref('')
+    const logAuto = ref(true)
+    const logModules = ['main','admin','orch','cognition','memory','audio','stt','vision','speak','worldinfo','self_config','newtouch']
+    async function loadLogs() {
+      const q = new URLSearchParams()
+      if (logLevel.value) q.set('level', logLevel.value)
+      if (logModule.value) q.set('module', logModule.value)
+      q.set('limit', '400')
+      try {
+        logs.value = await fetch('/api/logs?'+q.toString(), {cache:'no-store'}).then(r=>r.json())
+      } catch (e) { logs.value = [] }
+    }
+    function clearLogView() { logs.value = [] }
+    function emoPct(k) {
+      const v = liveState.value[k]
+      if (v===undefined) return 0
+      return Math.round(k==='valence'?(v+1)/2*100:v*100)
+    }
+    function emoColor(k) { return emoColors[k]||'#818cf8' }
+    async function loadCons() {
+      const qs = consFilter.value ? `?action=${consFilter.value}` : ''
+      cons.value = (await fetch('/api/observe/consciousness'+qs).then(r=>r.json())).reverse()
+    }
+    async function loadAudit() { audit.value=(await fetch('/api/observe/audit').then(r=>r.json())).reverse() }
+    async function loadState() { liveState.value=await fetch('/api/observe/state').then(r=>r.json()) }
+
+    // ── 结构化配置 ──────────────────────────────────────────
+    const cfgRaw = ref({})
+    const schema = ref([])
+    const openSecs = reactive({})
+    async function loadCfg() {
+      const [raw, sc] = await Promise.all([
+        fetch('/api/config').then(r=>r.json()),
+        fetch('/api/config/schema').then(r=>r.json()),
+      ])
+      cfgRaw.value = raw
+      schema.value = sc
+      sc.forEach(s => { if (!(s.section in openSecs)) openSecs[s.section]=true })
+    }
+    function _getDeep(obj, path) {
+      return path.split('.').reduce((o,k)=>o&&typeof o==='object'?o[k]:undefined, obj)
+    }
+    function _setDeep(obj, path, val) {
+      const parts = path.split('.')
+      let node = obj
+      for (let i=0;i<parts.length-1;i++) {
+        if (node[parts[i]]===undefined||typeof node[parts[i]]!=='object') node[parts[i]]={}
+        node=node[parts[i]]
+      }
+      node[parts[parts.length-1]] = val
+    }
+    function getCfgVal(sectionKey, fieldKey) {
+      return _getDeep(cfgRaw.value, sectionKey+'.'+fieldKey)
+    }
+    function setCfgVal(sectionKey, fieldKey, val) {
+      _setDeep(cfgRaw.value, sectionKey+'.'+fieldKey, val)
+    }
+    async function saveCfg() {
+      const r = await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({config:cfgRaw.value})})
+      showToast(r.ok?'✓ 配置已保存':'保存失败', r.ok)
+    }
+    async function _patchCharacter(patch) {
+      setCfgVal('character', Object.keys(patch)[0], Object.values(patch)[0])
+      const r = await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({config:cfgRaw.value})})
+      showToast(r.ok?'✓ 已切换':'切换失败', r.ok)
+    }
+    function switchCharacter(name) { _patchCharacter({name}) }
+    function switchPreset(name) { _patchCharacter({current_preset:name}) }
+    function setPresetEnabled(on) { _patchCharacter({preset_enabled:on}) }
+
+    // ── 权限 ──────────────────────────────────────────────────
+    const perms = reactive({
+      allow_adjust_frequency:false,allow_switch_preset:false,
+      allow_toggle_vision:false,allow_toggle_ui:false,allow_manage_schedules:false,
+    })
+    const permLabel = {
+      allow_adjust_frequency:'调整说话频率',allow_switch_preset:'切换预设',
+      allow_toggle_vision:'开关视觉',allow_toggle_ui:'开关 UI',allow_manage_schedules:'管理日程',
+    }
+    const permDesc = {
+      allow_adjust_frequency:'quiet / normal / chatty 档位',
+      allow_switch_preset:'只能切到 data/presets/ 里已有的预设',
+      allow_toggle_vision:'开关摄像头视觉感知',
+      allow_toggle_ui:'开关立绘/WebUI（暂未实现）',
+      allow_manage_schedules:'定时提醒（阶段5）',
+    }
+    async function loadPerms() {
+      const cfg = await fetch('/api/config').then(r=>r.json())
+      const p = cfg.ai_permissions||{}
+      Object.keys(perms).forEach(k=>{perms[k]=!!p[k]})
+    }
+    async function savePerms() {
+      const r = await fetch('/api/permissions',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({permissions:{...perms}})})
+      showToast(r.ok?'✓ 权限已保存':'保存失败', r.ok)
+    }
+
+    // ── 角色卡 ──────────────────────────────────────────────
+    const cardList = ref([])
+    const cardName = ref('')
+    const cardNewName = ref('')
+    const cardData = ref(null)
+    const cardFields = [
+      {k:'name',label:'名字'},{k:'first_mes',label:'开场白'},
+      {k:'description',label:'角色描述',multi:true,rows:4},
+      {k:'personality',label:'性格',multi:true,rows:3},
+      {k:'scenario',label:'情境',multi:true,rows:2},
+      {k:'system_prompt',label:'系统提示',multi:true,rows:3},
+      {k:'post_history_instructions',label:'历史后指令',multi:true,rows:2},
+    ]
+    async function loadCardList() {
+      cardList.value = await fetch('/api/characters').then(r=>r.json())
+      // 默认选中当前角色（从 config 读取）
+      if (cardList.value.length && !cardName.value) {
+        const cfg = await fetch('/api/config').then(r=>r.json())
+        const currentChar = cfg.character?.name || cardList.value[0].id
+        cardName.value = currentChar
+        loadCard()
+      }
+    }
+    // 世界书绑定：全列表 + 主绑定/附加（桥接到 cardData.extensions）
+    const wbAllList = ref([])
+    async function loadWbAllList() { wbAllList.value = await fetch('/api/worldbooks').then(r=>r.json()) }
+    const cardWorld = computed({
+      get: () => cardData.value?.extensions?.world || '',
+      set: v => { if (cardData.value) { (cardData.value.extensions ||= {}).world = v } },
+    })
+    const cardWorldAdd = computed(() => cardData.value?.extensions?.world_additional || [])
+    function toggleWorldAdd(n) {
+      if (!cardData.value) return
+      const ext = (cardData.value.extensions ||= {})
+      const arr = ext.world_additional ||= []
+      const i = arr.indexOf(n)
+      if (i >= 0) arr.splice(i, 1); else arr.push(n)
+    }
+    async function loadCard() {
+      if (!cardName.value) return
+      const d = await fetch('/api/characters/'+encodeURIComponent(cardName.value)).then(r=>r.json())
+      cardData.value = d.data||d
+      if (!cardData.value.extensions) cardData.value.extensions = {}
+      loadWbAllList()
+      fetch('/api/voice-libs').then(r=>r.json()).then(l=>{ voiceLibList.value=l })
+    }
+    async function saveCard() {
+      const r = await fetch('/api/characters/'+encodeURIComponent(cardName.value),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({card:cardData.value})})
+      showToast(r.ok?'✓ 角色卡已保存':'保存失败', r.ok)
+    }
+    async function createCard() {
+      const name = cardNewName.value.trim()
+      if (!name) return
+      const r = await fetch('/api/characters/'+encodeURIComponent(name),{method:'POST'})
+      if (r.ok) {
+        cardNewName.value=''
+        cardList.value = await fetch('/api/characters').then(r=>r.json())
+        cardName.value=name; loadCard()
+      } else showToast(await r.text(), false)
+    }
+    const cardRenameVal = ref('')
+    const renaming = ref(false)
+    const renameInput = ref(null)
+    // 当前选中角色的展示名（从 cardList 按 id 找）
+    function curDispName() {
+      return (cardList.value.find(c=>c.id===cardName.value)||{}).name || cardName.value
+    }
+    function openRename() {
+      cardRenameVal.value = curDispName()
+      renaming.value = true
+      nextTick(() => renameInput.value?.focus())
+    }
+    async function renameCard() {
+      const nn = cardRenameVal.value.trim()
+      if (!nn || !cardName.value) return
+      const r = await fetch('/api/characters/'+encodeURIComponent(cardName.value)+'/rename',
+        {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({new_name:nn})})
+      if (r.ok) {
+        renaming.value = false; cardRenameVal.value = ''
+        cardList.value = await fetch('/api/characters').then(r=>r.json())
+        loadCard()  // 重载卡，刷新「名字」字段（cardName=目录id 不变）
+        showToast('✓ 重命名成功')
+      } else showToast(await r.text(), false)
+    }
+    async function deleteCard() {
+      if (!cardName.value) return
+      if (!confirm(`确定删除角色「${curDispName()}」吗？\n将一并删除 ta 的情绪状态、意识流、聊天记录和长期记忆，不可恢复。`)) return
+      const r = await fetch('/api/characters/'+encodeURIComponent(cardName.value),{method:'DELETE'})
+      if (r.ok) {
+        cardName.value = ''
+        cardData.value = null
+        cardList.value = await fetch('/api/characters').then(r=>r.json())
+        if (cardList.value.length) { cardName.value = cardList.value[0].id; loadCard() }
+        showToast('✓ 已删除')
+      } else showToast(await r.text(), false)
+    }
+
+    // ── 预设 ──────────────────────────────────────────────────
+    const presetList = ref([])
+    const presetName = ref('')
+    const presetDoc = ref(null)
+    const presetNewName = ref('')
+    async function loadPresetList() {
+      presetList.value = await fetch('/api/presets').then(r=>r.json())
+      if (presetList.value.length && !presetName.value) { presetName.value=presetList.value[0]; loadPreset() }
+    }
+    async function loadPreset() {
+      if (!presetName.value) return
+      presetDoc.value = await fetch('/api/presets/'+encodeURIComponent(presetName.value)).then(r=>r.json())
+    }
+    async function createPreset() {
+      const name = presetNewName.value.trim()
+      if (!name) return
+      const r = await fetch('/api/presets/'+encodeURIComponent(name),{method:'POST'})
+      if (r.ok) {
+        presetNewName.value=''
+        presetList.value = await fetch('/api/presets').then(r=>r.json())  // 实时刷新
+        presetName.value=name
+        loadPreset()
+      } else showToast(await r.text(), false)
+    }
+    async function deletePreset() {
+      if (!confirm(`删除预设 "${presetName.value}"？`)) return
+      await fetch('/api/presets/'+encodeURIComponent(presetName.value),{method:'DELETE'})
+      presetName.value=''; presetDoc.value=null; loadPresetList()
+    }
+    async function savePreset() {
+      const r = await fetch('/api/presets/'+encodeURIComponent(presetName.value),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({doc:presetDoc.value})})
+      showToast(r.ok?'✓ 预设已保存':'保存失败', r.ok)
+    }
+
+    // ── 世界书 ──────────────────────────────────────────────
+    const wbList = ref([])
+    const wbName = ref('')
+    const wbDoc = ref(null)
+    const wbNewName = ref('')
+    async function loadWbList() {
+      wbList.value = await fetch('/api/worldbooks').then(r=>r.json())
+      if (wbList.value.length && !wbName.value) { wbName.value=wbList.value[0]; loadWb() }
+    }
+    async function loadWb() {
+      if (!wbName.value) return
+      wbDoc.value = await fetch('/api/worldbooks/'+encodeURIComponent(wbName.value)).then(r=>r.json())
+      if (!Array.isArray(wbDoc.value.entries)) wbDoc.value.entries=[]
+    }
+    async function createWb() {
+      const name = wbNewName.value.trim()
+      if (!name) return
+      const r = await fetch('/api/worldbooks/'+encodeURIComponent(name),{method:'POST'})
+      if (r.ok) {
+        wbNewName.value=''
+        wbList.value = await fetch('/api/worldbooks').then(r=>r.json())  // 实时刷新
+        wbName.value=name
+        loadWb()
+      } else showToast(await r.text(), false)
+    }
+    async function deleteWb() {
+      if (!confirm(`删除世界书 "${wbName.value}"？`)) return
+      await fetch('/api/worldbooks/'+encodeURIComponent(wbName.value),{method:'DELETE'})
+      wbName.value=''; wbDoc.value=null; loadWbList()
+    }
+    function addWbEntry() {
+      const uid = (wbDoc.value.entries.length ? Math.max(...wbDoc.value.entries.map(e=>e.uid||0))+1 : 1)
+      wbDoc.value.entries.push({uid,key:[],keysecondary:[],content:'',constant:false,selective:false,
+        selectiveLogic:'AND_ANY',order:100,position:'after',probability:100,sticky:0,cooldown:0,delay:0,disable:false})
+    }
+    async function saveWb() {
+      const r = await fetch('/api/worldbooks/'+encodeURIComponent(wbName.value),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({doc:wbDoc.value})})
+      showToast(r.ok?'✓ 世界书已保存':'保存失败', r.ok)
+    }
+
+    // ── 语音库（多文件 + 角色绑定） ──────────────────────────
+    const vlList = ref([])
+    const vlName = ref('')
+    const vlDoc = ref(null)
+    const vlNewName = ref('')
+    const vlNewEmo = ref('')
+    const switchModelResult = ref('')
+    async function loadVlList() {
+      vlList.value = await fetch('/api/voice-libs').then(r=>r.json())
+      if (vlList.value.length && !vlName.value) { vlName.value=vlList.value[0]; loadVoiceLib() }
+    }
+    async function loadVoiceLib() {
+      if (!vlName.value) return
+      const d = await fetch('/api/voice-libs/'+encodeURIComponent(vlName.value)).then(r=>r.json())
+      if (!d.emotions) d.emotions = {}
+      if (d.gpt_weights === undefined) d.gpt_weights = ''
+      if (d.sovits_weights === undefined) d.sovits_weights = ''
+      vlDoc.value = d
+    }
+    async function createVoiceLib() {
+      const name = vlNewName.value.trim()
+      if (!name) return
+      const r = await fetch('/api/voice-libs/'+encodeURIComponent(name),{method:'POST'})
+      if (r.ok) { vlNewName.value=''; vlList.value=await fetch('/api/voice-libs').then(r=>r.json()); vlName.value=name; loadVoiceLib() }
+      else showToast(await r.text(), false)
+    }
+    async function delVoiceLib() {
+      if (!confirm(`删除语音库 "${vlName.value}"？`)) return
+      await fetch('/api/voice-libs/'+encodeURIComponent(vlName.value),{method:'DELETE'})
+      vlName.value=''; vlDoc.value=null; loadVlList()
+    }
+    function addVlEmo() {
+      const emo = vlNewEmo.value.trim().toLowerCase()
+      if (!emo) { showToast('请先填情绪名', false); return }
+      if (vlDoc.value.emotions[emo]) { showToast('该情绪已存在', false); return }
+      // 新格式：使用 refs 数组
+      vlDoc.value.emotions[emo] = {
+        refs: [{
+          ref_audio_path: '',
+          prompt_text: '',
+          prompt_lang: 'ja'
+        }]
+      }
+      vlNewEmo.value = ''
+    }
+
+    function getEmoRefs(emo) {
+      /**
+       * 获取情绪的参考音频列表（兼容旧格式）。
+       * 新格式：{refs: [{...}, {...}]}
+       * 旧格式：{ref_audio_path, prompt_text, prompt_lang}
+       */
+      const info = vlDoc.value?.emotions?.[emo]
+      if (!info) return []
+
+      // 新格式：直接返回 refs
+      if (info.refs && Array.isArray(info.refs)) {
+        return info.refs
+      }
+
+      // 旧格式：自动转换为 refs 数组（单个元素）
+      if (info.ref_audio_path || info.prompt_text) {
+        // 原地转换为新格式
+        vlDoc.value.emotions[emo] = {
+          refs: [{
+            ref_audio_path: info.ref_audio_path || '',
+            prompt_text: info.prompt_text || '',
+            prompt_lang: info.prompt_lang || 'ja'
+          }]
+        }
+        return vlDoc.value.emotions[emo].refs
+      }
+
+      // 空情绪档，初始化
+      vlDoc.value.emotions[emo] = {
+        refs: [{
+          ref_audio_path: '',
+          prompt_text: '',
+          prompt_lang: 'ja'
+        }]
+      }
+      return vlDoc.value.emotions[emo].refs
+    }
+
+    function addEmoRef(emo) {
+      /**添加新的参考音频到指定情绪。*/
+      const refs = getEmoRefs(emo)
+      refs.push({
+        ref_audio_path: '',
+        prompt_text: '',
+        prompt_lang: 'ja'
+      })
+    }
+
+    function removeEmoRef(emo, idx) {
+      /**删除指定情绪的某个参考音频。*/
+      const refs = getEmoRefs(emo)
+      if (refs.length > 1) {
+        refs.splice(idx, 1)
+      } else {
+        showToast('至少保留一个参考音频', false)
+      }
+    }
+
+    async function saveVoiceLib() {
+      const r = await fetch('/api/voice-libs/'+encodeURIComponent(vlName.value),
+        {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({lib:vlDoc.value})})
+      showToast(r.ok?'✓ 语音库已保存':'保存失败', r.ok)
+    }
+    async function switchVoiceModel() {
+      if (!vlDoc.value) return
+      switchModelResult.value = '切换中…'
+      const r = await fetch('/api/voices/switch-model',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({gpt_weights:vlDoc.value.gpt_weights||'',sovits_weights:vlDoc.value.sovits_weights||''})})
+      const d = await r.json()
+      switchModelResult.value = d.error ? ('失败: '+d.error) : JSON.stringify(d)
+    }
+    // 角色卡语音库绑定
+    const voiceLibList = ref([])
+    const cardVoiceLib = computed({
+      get: () => cardData.value?.extensions?.voice_lib || '',
+      set: v => { if (cardData.value) (cardData.value.extensions ||= {}).voice_lib = v },
+    })
+    // 角色卡唤醒词绑定
+    const cardWakeWords = computed({
+      get: () => {
+        const words = cardData.value?.extensions?.wake_words
+        return Array.isArray(words) ? words.join(', ') : ''
+      },
+      set: v => {
+        if (!cardData.value) return
+        const words = v.split(',').map(w => w.trim()).filter(Boolean)
+        if (words.length > 0) {
+          (cardData.value.extensions ||= {}).wake_words = words
+        } else {
+          // 清空时删除字段
+          if (cardData.value.extensions) delete cardData.value.extensions.wake_words
+        }
+      },
+    })
+    // 角色卡回复语言绑定
+    const cardReplyLang = computed({
+      get: () => cardData.value?.extensions?.reply_lang || '',
+      set: v => {
+        if (!cardData.value) return
+        if (v) {
+          (cardData.value.extensions ||= {}).reply_lang = v
+        } else {
+          // 清空时删除字段
+          if (cardData.value.extensions) delete cardData.value.extensions.reply_lang
+        }
+      },
+    })
+    // 角色卡翻译语言绑定
+    const cardTranslationLang = computed({
+      get: () => cardData.value?.extensions?.translation_lang || '',
+      set: v => {
+        if (!cardData.value) return
+        if (v) {
+          (cardData.value.extensions ||= {}).translation_lang = v
+        } else {
+          // 清空时删除字段
+          if (cardData.value.extensions) delete cardData.value.extensions.translation_lang
+        }
+      },
+    })
+
+    onMounted(() => {
+      loadChat()
+      setInterval(loadState, 15000)
+      // 聊天实时轮询：语音/麦克风/主动发言下 ta 的新消息也能自动更新
+      setInterval(async () => {
+        if (tab.value !== 'chat' || sending) return   // 发送中不覆盖，避免抹掉乐观消息
+        const msgs = await fetch('/api/chat/history?limit=80',{cache:'no-store'}).then(r=>r.json())
+        if (sig(msgs) !== sig(chatMsgs.value)) {       // 按内容签名比对，满80条也能识别
+          chatMsgs.value = msgs
+          await scrollBottom()
+        }
+      }, 1000)
+      // 日志自动刷新：仅当前在日志 Tab 且开启自动刷新时拉取
+      setInterval(async () => {
+        if (tab.value !== 'logs' || !logAuto.value) return
+        await loadLogs()
+      }, 2000)
+    })
+
+    return {
+      tabs, tab, cards, toggleCard, toast,
+      chatMsgs, chatInput, msgBox, loadChat, sendChat,
+      cons, consFilter, audit, liveState, emoKeys, emoPct, emoColor, loadCons, loadAudit, loadState,
+      logs, logLevel, logModule, logAuto, logModules, loadLogs, clearLogView,
+      cfgRaw, schema, openSecs, getCfgVal, setCfgVal, saveCfg,
+      switchCharacter, switchPreset, setPresetEnabled,
+      perms, permLabel, permDesc, savePerms,
+      cardList, cardName, cardData, cardFields, loadCard, saveCard,
+      cardNewName, createCard, cardRenameVal, renameCard, renaming, renameInput, openRename, deleteCard,
+      wbAllList, cardWorld, cardWorldAdd, toggleWorldAdd,
+      presetList, presetName, presetDoc, presetNewName, loadPreset, createPreset, deletePreset, savePreset,
+      wbList, wbName, wbDoc, wbNewName, loadWb, createWb, deleteWb, addWbEntry, saveWb,
+      vlList, vlName, vlDoc, vlNewName, vlNewEmo, switchModelResult,
+      loadVoiceLib, createVoiceLib, delVoiceLib, addVlEmo, saveVoiceLib, switchVoiceModel,
+      getEmoRefs, addEmoRef, removeEmoRef,
+      voiceLibList, cardVoiceLib, cardWakeWords, cardReplyLang, cardTranslationLang,
+    }
+  }
+}).mount('#app')
+</script>
+</body>
+</html>
