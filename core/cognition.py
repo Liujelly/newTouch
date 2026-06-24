@@ -399,8 +399,9 @@ class Cognition:
         time_context: str = "",
         think_seed: str = "",
         recent_inner: list[str] | None = None,
+        face_emotions: list[str] | None = None,
     ) -> dict:
-        """主动路径内心独白: 返回 {thought, action, text, emotion}，action 可为 speak/silent/look。
+        """主动路径内心独白: 返回 {thought, action, text, emotion, face}，action 可为 speak/silent/look。
 
         支持工具调用：如果 LLM 调用工具，执行后回灌结果，让 LLM 基于工具结果决定要不要说话。
         """
@@ -418,6 +419,7 @@ class Cognition:
             think_seed=think_seed,
             recent_inner=recent_inner,
             use_cot=use_cot,
+            face_emotions=face_emotions,
         )
 
         # 工具循环（主动路径：非流式，返回结构化 JSON 或思维链）
