@@ -125,16 +125,9 @@ limits:
   warn_at_percent: 80
   degraded_mode: local_only
 token_intensive:
-  vision_direct_image: false
+  # 已实现的优化（其余 8 个方向见 docs/Token密集型优化方案.md，待实现时再加开关）
   proactive_cot: true
-  long_chat_window: 40
   memory_query_generation: true
-  multi_round_vision: false
-  reactive_memory_recall: false
-  emotion_sync: false
-  worldbook_llm_filter: false
-  multi_agent_validation: false
-  persistent_consciousness: false
 logging:
   enabled: true
   level: DEBUG
