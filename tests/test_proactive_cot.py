@@ -193,6 +193,39 @@ def test_cot_japanese_speak_marker():
     print("✅ 通过\n")
 
 
+def test_unreachable_rule_in_prompt():
+    """v2.48：主动独白指令须含"对方暂不可达则沉默"规则，防止重构改丢。
+
+    纯 prompt 规则无单元效果测试（效果靠真实 LLM），这里只断言规则文本
+    在两个版本（JSON / CoT）组装出的 monologue 里都存在。
+    """
+    from core.character import CharacterCard, build_proactive_prompt
+
+    card = CharacterCard(name="小触")
+    common = dict(
+        card=card, user_name="你", trigger_reason="心跳",
+        emotion_summary="孤独感0.6", chat_history=[], elapsed_desc="2小时",
+    )
+
+    # JSON 版
+    _, msgs_json = build_proactive_prompt(**common, use_cot=False)
+    mono_json = msgs_json[-1]["content"]
+    # CoT 版
+    _, msgs_cot = build_proactive_prompt(**common, use_cot=True)
+    mono_cot = msgs_cot[-1]["content"]
+
+    print("=== 测试 不可达规则在 prompt 里 ===")
+    print(f"JSON 版含'联系不上': {'联系不上' in mono_json}")
+    print(f"CoT 版含'联系不上': {'联系不上' in mono_cot}")
+
+    for label, mono in (("JSON", mono_json), ("CoT", mono_cot)):
+        assert "联系不上" in mono, f"{label} 版缺'联系不上'规则"
+        assert "不要" in mono and "想说出口的话" in mono, \
+            f"{label} 版缺'thought 不写想说出口的话'约束"
+        assert "收不到" in mono, f"{label} 版缺'对方收不到'判断"
+    print("✅ 通过\n")
+
+
 if __name__ == "__main__":
     print("=== 测试主动思考链（CoT）解析器 ===\n")
 
@@ -206,5 +239,6 @@ if __name__ == "__main__":
     test_cot_japanese_marker()
     test_cot_marker_only()
     test_cot_japanese_speak_marker()
+    test_unreachable_rule_in_prompt()
 
     print("=== 全部测试通过 ===")
