@@ -281,6 +281,10 @@ def get_config_schema() -> list:
              "help": "留空则复用记忆 LLM Key"},
             {"k": "embed_base_url", "label": "Embedding Base URL", "type": "text",
              "help": "留空则复用记忆 LLM Base URL。注意火山 embedding 在 /api/v3，非 /api/coding/v3"},
+            {"k": "reactive_auto_recall", "label": "反应路径自动注入记忆", "type": "toggle",
+             "help": "开：每句用户发言自动 recall 注入 system（现状）；关：不自动注入，靠 LLM 调 memory_search 工具。改完即生效"},
+            {"k": "tool_enabled", "label": "memory_search 工具", "type": "toggle", "restart": True,
+             "help": "注册 memory_search 工具给 LLM 自主调用（觉得自动注入不够时可再查）。与上面独立，可叠加/互替。改后需重启"},
         ]},
         {"section": "角色 / 预设（切换即时生效）", "key": "character", "fields": [
             {"k": "name", "label": "当前角色", "type": "char_select"},

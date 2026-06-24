@@ -84,6 +84,10 @@ async def main() -> None:
     }
     register_self_config_tools(cfg, state, refreshers={"gatekeeper": _refresh_gatekeeper, "vision": _refresh_vision})
 
+    # 注册记忆检索工具 memory_search（反应路径 LLM 可自主调用，开关 memory.tool_enabled）
+    from core.tools.memory_tools import register_memory_tools
+    register_memory_tools(orch._memory, cfg)
+
     vision_task = asyncio.create_task(vision.start())
 
     orch_task = asyncio.create_task(orch.run())

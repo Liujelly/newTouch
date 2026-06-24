@@ -100,6 +100,10 @@ memory:
   enabled: true
   provider: mem0
   db_path: data/memory_db
+  # 反应路径记忆注入：开→每句自动 recall 注入 system；关→不自动注入，靠 LLM 调 memory_search 工具。改完即生效
+  reactive_auto_recall: true
+  # 注册 memory_search 工具给 LLM 自主调用（与 reactive_auto_recall 独立，可叠加/互替）。改后需重启
+  tool_enabled: true
   llm_model: Doubao-Seed-2.0-lite
   base_url: https://ark.cn-beijing.volces.com/api/coding/v3
   embedding_model: doubao-embedding-vision

@@ -515,7 +515,12 @@ class Orchestrator:
             scan = "\n".join(m.get("content", "") for m in self._chat_history[-4:]) + "\n" + user_text
             wi_result = self._wi.activate(scan, round_no=len(self._chat_history) // 2)
 
-        memories = self._memory.recall(user_text, limit=3)
+        # 反应路径记忆注入开关（memory.reactive_auto_recall，默认开=现状）：
+        # 开→每句自动 recall 注入 system；关→不自动注入，靠 LLM 调 memory_search 工具。
+        if self._cfg.get("memory.reactive_auto_recall", True):
+            memories = self._memory.recall(user_text, limit=3)
+        else:
+            memories = []
 
         preset = load_preset(self._cfg)
         reply_lang, translation_lang = self._get_reply_lang_config()
