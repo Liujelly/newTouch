@@ -303,6 +303,14 @@ def get_config_schema() -> list:
             {"k": "memory_query_generation", "label": "记忆检索 LLM 生成 query", "type": "toggle",
              "help": "主动思考时 LLM 生成精准检索问题（主动回想路线 B）。成本：每次主动思考 +100 tokens"},
         ]},
+        {"section": "立绘浮窗", "key": "sprite", "fields": [
+            {"k": "enabled", "label": "启用桌面立绘浮窗", "type": "toggle", "restart": True,
+             "help": "开则启动 PyQt6 透明置顶浮窗，按 <face:表情> 标签切换差分立绘。需先 pip install PyQt6。立绘库放 data/characters/{角色}/sprites/sprites.json。改后需重启"},
+            {"k": "host", "label": "广播地址", "type": "text", "restart": True,
+             "help": "浮窗通信地址，默认 127.0.0.1（本机）"},
+            {"k": "port", "label": "广播端口", "type": "number", "min": 1024, "max": 65535, "restart": True,
+             "help": "主程序 TCP server 端口，浮窗 client 连此端口收表情。改后需重启"},
+        ]},
         {"section": "日志", "key": "logging", "fields": [
             {"k": "enabled", "label": "写日志文件", "type": "toggle",
              "help": "开启则写 data/logs/system.log（按日轮转）；关闭只输出到控制台。保存后下次写日志即生效。"},

@@ -128,6 +128,12 @@ token_intensive:
   # 已实现的优化（其余 8 个方向见 docs/Token密集型优化方案.md，待实现时再加开关）
   proactive_cot: true
   memory_query_generation: true
+sprite:
+  # 桌面立绘浮窗（PyQt6 独立进程）。enabled=true 时启动浮窗，按 <face:表情> 标签换差分图。
+  # 需先 pip install PyQt6。改后需重启。立绘库放 data/characters/{角色}/sprites/sprites.json
+  enabled: false
+  host: 127.0.0.1
+  port: 17621
 logging:
   enabled: true
   level: DEBUG

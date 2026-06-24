@@ -32,9 +32,13 @@ _ACTION_BRACKET = re.compile(r"[（(][^）)]*[）)]")
 _DANGLING_OPEN = re.compile(r"[（(][^）)]*$")
 _DANGLING_CLOSE = re.compile(r"^[^（(]*[）)]")
 # 回复开头的情绪标签，如 <emo:happy>。只控制 TTS 语气，不朗读、不入聊天记录。
-_EMO_PREFIX = re.compile(r"^\s*<\s*emo\s*:\s*([A-Za-z_]+)\s*>", re.IGNORECASE)
+# [\w] 含 Unicode，兼容中文情绪名（如立绘 face 库 key 可能是中文）。
+_EMO_PREFIX = re.compile(r"^\s*<\s*emo\s*:\s*([\w]+)\s*>", re.IGNORECASE)
 # 文本中任意位置的情绪标签（用于清理 LLM 可能在末尾/中间误输出的标签）
-_EMO_TAG_ANYWHERE = re.compile(r"<\s*emo\s*:\s*[A-Za-z_]+\s*>", re.IGNORECASE)
+_EMO_TAG_ANYWHERE = re.compile(r"<\s*emo\s*:\s*[\w]+\s*>", re.IGNORECASE)
+# 立绘表情标签 <face:得意>，独立于 <emo:>（语音语气）。驱动立绘差分切换。
+_FACE_PREFIX = re.compile(r"^\s*<\s*face\s*:\s*([\w]+)\s*>", re.IGNORECASE)
+_FACE_TAG_ANYWHERE = re.compile(r"<\s*face\s*:\s*[\w]+\s*>", re.IGNORECASE)
 
 
 def parse_emotion_prefix(text: str) -> tuple[str | None, str]:
@@ -45,17 +49,34 @@ def parse_emotion_prefix(text: str) -> tuple[str | None, str]:
     return m.group(1).lower(), text[m.end():]
 
 
+def parse_face_prefix(text: str) -> tuple[str | None, str]:
+    """抠出回复开头的 <face:表情> 标签，返回 (表情|None, 去标签后的文本)。
+
+    与 parse_emotion_prefix 同模式，前缀换 face。face 不 lower()（中文无需、英文档
+    名按库 key 原样匹配更稳）。
+    """
+    m = _FACE_PREFIX.match(text or "")
+    if not m:
+        return None, text
+    return m.group(1), text[m.end():]
+
+
 def strip_all_emotion_tags(text: str) -> str:
-    """移除文本中所有位置的 <emo:xxx> 标签（开头/中间/末尾）。
+    """移除文本中所有位置的 <emo:xxx> 和 <face:xxx> 标签（开头/中间/末尾）。
 
     用于清理 LLM 可能在非开头位置误输出的标签，确保标签不进 TTS/聊天记录/记忆。
     """
-    return _EMO_TAG_ANYWHERE.sub("", text)
+    text = _EMO_TAG_ANYWHERE.sub("", text)
+    text = _FACE_TAG_ANYWHERE.sub("", text)
+    return text
 
 
-def _looks_like_partial_emo(stripped: str) -> bool:
-    """判断缓冲文本是否像未闭合的 <emo:…> 前缀（用于流式跨 chunk 缓冲）。"""
-    return bool(re.match(r"^<\s*e?m?o?\s*:?\s*[A-Za-z_]*$", stripped, re.IGNORECASE))
+def _looks_like_partial_tag(stripped: str) -> bool:
+    """判断缓冲文本是否像未闭合的 <emo:…> 或 <face:…> 前缀（流式跨 chunk 缓冲）。
+
+    emo/face 字面量也允许部分匹配（逐字符缓冲，如 '<'、'<e'、'<emo'、'<face:' 都算）。
+    """
+    return bool(re.match(r"^<\s*(e?m?o?|f?a?c?e?)\s*:?\s*[\w]*$", stripped, re.IGNORECASE))
 
 
 _VOICE_LIB_RESERVED = frozenset(("gpt_weights", "sovits_weights"))
@@ -199,7 +220,13 @@ class Speaker:
         self._name = name
         self._interrupt = asyncio.Event()
         self._speaking = False
-        self._cur_emotion: str | None = None  # 本轮回复的情绪（决定参考音频）
+        self._cur_emotion: str | None = None  # 本轮回复的语音语气（决定参考音频）
+        self._cur_face: str | None = None  # 本轮回复的立绘表情（驱动浮窗换图）
+        self._broadcaster = None  # FaceBroadcaster，注入后把 face 推给立绘浮窗
+
+    def set_emotion_broadcaster(self, broadcaster) -> None:
+        """注入立绘 face 广播器（main.py 接线）。None 时不广播，向后兼容。"""
+        self._broadcaster = broadcaster
 
     # 读当前配置值的便捷方法（每次现读，不缓存）
     def _t(self, key: str, default=None):
@@ -212,7 +239,7 @@ class Speaker:
         self._interrupt.set()
 
     async def speak(self, text_stream: AsyncIterator[str], on_text=None,
-                    emotion: str | None = None) -> str:
+                    emotion: str | None = None, face: str | None = None) -> str:
         """消费文本流并合成播放。
 
         producer/consumer 解耦：producer 尽快读完 LLM 流拿到全文，consumer 在后台
@@ -221,14 +248,20 @@ class Speaker:
         保留 is_speaking()/barge-in/回声抑制语义。
         on_text 可能在播放尚未结束时被调用；TTS 关闭时退化为纯文本打印后即触发。
 
-        emotion：主动路径直接传入（决定参考音频）；反应路径传 None，由流开头的
+        emotion：主动路径直接传入语音语气（决定参考音频）；反应路径传 None，由流开头的
         <emo:情绪> 标签自动解析。标签被剥离，不进 TTS、不进 on_text 文本。
+        face：主动路径直接传入立绘表情；反应路径传 None，由流开头 <face:表情> 标签解析。
+        解析到 face 时广播给立绘浮窗换图。无 face（主动未传+反应无标签）时广播 neutral。
         """
         self._interrupt.clear()
         self._speaking = True
         self._cur_emotion = emotion  # 主动路径显式传；反应路径下面从标签解析覆盖
-        # 反应路径：包一层流，剥掉开头 <emo:xxx> 标签并设 _cur_emotion
-        if emotion is None:
+        self._cur_face = face  # 主动路径显式传；反应路径下面从标签解析覆盖
+        # 主动路径显式传了 face 就立即广播（不等流）；反应路径由 _strip_emotion_stream 解析后广播
+        if face is not None:
+            self._broadcast_face()
+        # 反应路径：包一层流，剥掉开头 <emo:>/<face:> 标签并设 _cur_emotion / _cur_face
+        if emotion is None and face is None:
             text_stream = self._strip_emotion_stream(text_stream)
         full: list[str] = []
         tts_on = self._t("enabled", True)
@@ -260,6 +293,10 @@ class Speaker:
                 if printed_header:
                     print()
                 _fire()
+                # 无 face 时广播 neutral 让浮窗回默认图（与 TTS 路径一致）
+                if self._cur_face is None:
+                    self._cur_face = "neutral"
+                    self._broadcast_face()
                 return strip_all_emotion_tags("".join(full))
 
             # TTS：producer 读流入队 + 攒全文，consumer 后台播放
@@ -288,14 +325,21 @@ class Speaker:
             await asyncio.gather(_producer(), _consumer())
         finally:
             _fire()  # 兜底：异常路径也确保回调触发一次
+            # 反应路径若整段没解析到 face 标签，广播 neutral 让浮窗回默认图
+            # （主动路径已显式传 face 并广播过；此处只补 None 的情况）
+            if self._cur_face is None:
+                self._cur_face = "neutral"
+                self._broadcast_face()
             self._speaking = False
-        # 最终清理：移除全文中所有残留的 <emo:xxx> 标签（LLM 可能在末尾/中间误输出）
+        # 最终清理：移除全文中所有残留的 <emo:xxx>/<face:xxx> 标签（LLM 可能在末尾/中间误输出）
         return strip_all_emotion_tags("".join(full))
 
     async def _strip_emotion_stream(self, stream: AsyncIterator[str]) -> AsyncIterator[str]:
-        """从流开头解析 <emo:情绪> 标签：设 self._cur_emotion，剥掉标签后把余下文本透传。
+        """从流开头解析 <emo:> / <face:> 标签：设 _cur_emotion / _cur_face，剥标签后透传。
 
-        标签可能跨多个 chunk，故先缓冲到能判定为止（攒够 '>' 或确定开头不是标签）。
+        两个标签都在开头、顺序不定（如 <emo:happy><face:得意>）。可能跨多个 chunk，
+        故先缓冲到能判定为止（攒够 '>' 或确定开头不是标签）。
+        解析到 emo 设 _cur_emotion、解析到 face 设 _cur_face 并广播给浮窗。
         """
         buf = ""
         decided = False
@@ -304,25 +348,60 @@ class Speaker:
                 yield chunk
                 continue
             buf += chunk
-            # 还没攒到能判定的程度：开头是 '<emo:' 的前缀且未闭合，继续等
+            # 还没攒到能判定的程度：开头是 '<emo:'/'<face:' 前缀且未闭合，继续等
             stripped = buf.lstrip()
             if "<" in stripped and ">" not in stripped and len(buf) < 40:
-                # 可能是未闭合的标签，继续缓冲（上限 40 字防止无限等）
-                if _looks_like_partial_emo(stripped):
+                if _looks_like_partial_tag(stripped):
                     continue
-            emo, rest = parse_emotion_prefix(buf)
-            if emo is not None:
-                self._cur_emotion = emo
             decided = True
+            rest = self._consume_prefix_tags(buf)
             if rest:
                 yield rest
         # 流结束仍未 decided（极短流）：兜底解析一次
         if not decided and buf:
-            emo, rest = parse_emotion_prefix(buf)
-            if emo is not None:
-                self._cur_emotion = emo
+            rest = self._consume_prefix_tags(buf)
             if rest:
                 yield rest
+
+    def _consume_prefix_tags(self, text: str) -> str:
+        """循环剥离开头的 <emo:> 和 <face:> 标签，设对应 _cur_*，返回剩余文本。
+
+        处理两标签顺序不定 + 之间可能有空白的情况。非标签开头时原样返回。
+        """
+        rest = text
+        changed = True
+        # 最多剥 4 个标签防异常死循环（正常 2 个：emo + face）
+        for _ in range(4):
+            rest = rest.lstrip()
+            emo, after_emo = parse_emotion_prefix(rest)
+            if emo is not None:
+                if self._cur_emotion is None:
+                    self._cur_emotion = emo
+                rest = after_emo
+                changed = True
+                continue
+            face, after_face = parse_face_prefix(rest)
+            if face is not None:
+                self._cur_face = face
+                self._broadcast_face()
+                rest = after_face
+                changed = True
+                continue
+            break
+        return rest
+
+    def _broadcast_face(self) -> None:
+        """把当前 _cur_face 推给立绘浮窗（异步广播，失败静默）。"""
+        b = self._broadcaster
+        if b is None:
+            return
+        face = self._cur_face or "neutral"
+        try:
+            # broadcaster.push 是协程，用 create_task 异步发，不阻塞流式输出
+            asyncio.create_task(b.push(face, self._name))
+        except RuntimeError:
+            # 无事件循环时静默（如测试环境）
+            pass
 
     async def _synth_and_play(self, sentence: str) -> None:
         sentence = _strip_actions(sentence)

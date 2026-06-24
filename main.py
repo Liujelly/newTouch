@@ -88,6 +88,25 @@ async def main() -> None:
     from core.tools.memory_tools import register_memory_tools
     register_memory_tools(orch._memory, cfg)
 
+    # 立绘浮窗：起 face 广播 TCP server，把立绘表情推给独立浮窗进程（开关 sprite.enabled）
+    sprite_proc = None
+    if cfg.get("sprite.enabled", False):
+        from core.sprite.broadcaster import FaceBroadcaster
+        sprite_host = cfg.get("sprite.host", "127.0.0.1")
+        sprite_port = int(cfg.get("sprite.port", 17621))
+        broadcaster = FaceBroadcaster(sprite_host, sprite_port)
+        asyncio.create_task(broadcaster.start())
+        speaker.set_emotion_broadcaster(broadcaster)
+        # 拉起独立浮窗进程（detached；主程序退出时 terminate）
+        import subprocess
+        sprite_proc = subprocess.Popen(
+            [sys.executable, str(cfg.project_root / "sprite_window.py"),
+             "--port", str(sprite_port), "--host", sprite_host,
+             "--character", char_name],
+            cwd=str(cfg.project_root),
+        )
+        log.info("立绘浮窗已启动: http://%s:%s", sprite_host, sprite_port)
+
     vision_task = asyncio.create_task(vision.start())
 
     orch_task = asyncio.create_task(orch.run())
@@ -152,6 +171,9 @@ async def main() -> None:
         hb_task.cancel()
         orch_task.cancel()
         await asyncio.gather(vision_task, hb_task, orch_task, return_exceptions=True)
+        # 立绘浮窗进程：主程序退出时终止（否则 detached 进程残留）
+        if sprite_proc is not None and sprite_proc.poll() is None:
+            sprite_proc.terminate()
 
 
 if __name__ == "__main__":

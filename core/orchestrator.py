@@ -21,6 +21,7 @@ from .gatekeeper import GateKeeper
 from .state import EmotionState
 from .memory.store import MemoryStore
 from .action.speak import Speaker, load_voice_emotions, apply_voice_model
+from .sprite.store import load_face_emotions
 from .logger import get_logger
 
 log = get_logger("orch")
@@ -158,6 +159,10 @@ class Orchestrator:
             translation_lang = self._cfg.get("character.default_translation_lang", "")
 
         return reply_lang, translation_lang
+
+    def _face_emotions(self) -> list[str]:
+        """当前角色立绘库有哪些表情档（库驱动，供 prompt 列出可选表情）。空库返回 []。"""
+        return load_face_emotions(self._cfg, self._card.name)
 
     def _load_recent_history(self) -> None:
         """从 chat_history.jsonl 尾部读最近 _max_history 条回填短期窗口，实现重启续聊。
@@ -390,6 +395,7 @@ class Orchestrator:
         preset = load_preset(self._cfg)
         reply_lang, translation_lang = self._get_reply_lang_config()
         voice_emotions = load_voice_emotions(self._cfg)
+        face_emotions = self._face_emotions()
         elapsed = time.time() - self._state.last_interaction
         time_context = _time_context(datetime.now())
 
@@ -402,6 +408,7 @@ class Orchestrator:
                 elapsed_desc=_elapsed_desc(elapsed), can_look=False,
                 preset=preset, reply_lang=reply_lang, translation_lang=translation_lang,
                 voice_emotions=voice_emotions,
+                face_emotions=face_emotions,
                 recent_inner=list(self._recent_inner),
                 time_context=time_context,
             )
@@ -422,7 +429,8 @@ class Orchestrator:
         async def _once():
             yield reply
 
-        await self._speaker.speak(_once(), emotion=result.get("emotion") or None)
+        await self._speaker.speak(_once(), emotion=result.get("emotion") or None,
+                                 face=result.get("face") or None)
 
         delta = result.get("emotion_delta") or {}
         if delta:
@@ -545,6 +553,7 @@ class Orchestrator:
                 emotion_summary=self._state.summary(), memories=memories,
                 preset=preset, reply_lang=reply_lang, translation_lang=translation_lang,
                 voice_emotions=load_voice_emotions(self._cfg),
+                face_emotions=self._face_emotions(),
                 earlier_summary=self._earlier_summary,
                 time_context=time_context,
             )
@@ -646,6 +655,7 @@ class Orchestrator:
         preset = load_preset(self._cfg)
         reply_lang, translation_lang = self._get_reply_lang_config()
         voice_emotions = load_voice_emotions(self._cfg)
+        face_emotions = self._face_emotions()
 
         # 被忽略次数：提前获取 base_reason，供后续路线 B 使用
         base_reason = event.payload.get("reason", "心跳")
@@ -695,6 +705,7 @@ class Orchestrator:
                 elapsed_desc=_elapsed_desc(elapsed), can_look=can_look,
                 preset=preset, reply_lang=reply_lang, translation_lang=translation_lang,
                 voice_emotions=voice_emotions,
+                face_emotions=face_emotions,
                 memories=memories, earlier_summary=self._earlier_summary,
                 time_context=time_context, think_seed=think_seed,
                 recent_inner=list(self._recent_inner),
@@ -718,6 +729,7 @@ class Orchestrator:
                         elapsed_desc=_elapsed_desc(elapsed), can_look=False,
                         preset=preset, reply_lang=reply_lang, translation_lang=translation_lang,
                         voice_emotions=voice_emotions,
+                        face_emotions=face_emotions,
                         memories=memories, earlier_summary=self._earlier_summary,
                         time_context=time_context, think_seed=think_seed,
                     )
@@ -748,7 +760,8 @@ class Orchestrator:
 
         # 主动发言文本已知，先落盘（语音播放期间管理平台即可见），再播放
         self._log_chat("assistant", reply)
-        await self._speaker.speak(_once(), emotion=result.get("emotion") or None)
+        await self._speaker.speak(_once(), emotion=result.get("emotion") or None,
+                                 face=result.get("face") or None)
         self._gate.record_spoke()
         # 独白自带的情绪增量（这次内心活动让 ta 情绪如何变化）→ 直接 apply，零额外调用
         delta = result.get("emotion_delta") or {}

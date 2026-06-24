@@ -126,6 +126,24 @@ def _emotion_instruction(voice_emotions: list[str] | None) -> str:
     )
 
 
+def _face_instruction(face_emotions: list[str] | None) -> str:
+    """立绘表情标签指令（库驱动）：可选表情来自立绘库 sprites.json 实际的键。
+
+    与 <emo:>（语音语气）独立——立绘表情和说话语气是两个维度，可不同。
+    要求回复开头以 <face:表情> 标注本次立绘表情，仅驱动立绘换图，不朗读、不显示。
+    空列表则返回空串（无立绘库时退化，不要求 face 标签）。
+    """
+    if not face_emotions:
+        return ""
+    opts = " / ".join(face_emotions)
+    return (
+        f"【立绘表情标签】你能展现这些立绘表情：{opts}。\n"
+        f"每次回复**必须**在开头用 `<face:表情>` 标注本次的立绘表情（从上面选一个最贴合的），"
+        f"例如 `<face:得意>`。它独立于 `<emo:…>`（语气），只决定画面上你的神态，"
+        f"不会被读出来也不显示给用户。两个标签都放开头，顺序随意，如 `<emo:happy><face:得意>`。"
+    )
+
+
 def _build_system(card: CharacterCard, user_name: str,
                   user_persona: str = "",
                   world_before: list[str] | None = None,
@@ -134,7 +152,8 @@ def _build_system(card: CharacterCard, user_name: str,
                   reply_lang: str = "zh",
                   translation_lang: str = "",
                   voice_emotions: list[str] | None = None,
-                  lang_instruction: bool = True) -> str:
+                  lang_instruction: bool = True,
+                  face_emotions: list[str] | None = None) -> str:
     """组装角色系统提示。世界书 before 在角色定义前, after 在其后 (架构文档 6.5)。
 
     预设（提示词预设）叠加位置：
@@ -188,6 +207,10 @@ def _build_system(card: CharacterCard, user_name: str,
     emo_instr = _emotion_instruction(voice_emotions)
     if emo_instr:
         sys_parts.append(emo_instr)
+    # 立绘表情标签指令（库驱动，空库则不加；与 emo 独立）
+    face_instr = _face_instruction(face_emotions)
+    if face_instr:
+        sys_parts.append(face_instr)
     return "\n\n".join(sys_parts)
 
 
@@ -291,6 +314,7 @@ def build_reactive_prompt(
     voice_emotions: list[str] | None = None,
     earlier_summary: str = "",
     time_context: str = "",
+    face_emotions: list[str] | None = None,
 ) -> tuple[str, list[dict]]:
     """反应路径: 返回 (system_prompt, messages)。
 
@@ -298,7 +322,8 @@ def build_reactive_prompt(
     world_after → [情绪/记忆注入] → 对话历史 → 本轮输入 → 破限(在 system 末尾)。
     """
     system_prompt = _build_system(card, user_name, user_persona, world_before, world_after,
-                                  preset, reply_lang, translation_lang, voice_emotions)
+                                  preset, reply_lang, translation_lang, voice_emotions,
+                                  face_emotions=face_emotions)
     messages = _history_to_messages(chat_history)
     # 情绪 + 相关记忆作为 system 消息注入在历史前 (比历史更"新鲜")
     inject = []
@@ -334,6 +359,7 @@ def build_proactive_prompt(
     think_seed: str = "",
     recent_inner: list[str] | None = None,
     use_cot: bool = False,
+    face_emotions: list[str] | None = None,
 ) -> tuple[str, list[dict]]:
     """主动路径: 内心独白 (架构文档 4.3 第3层)。
 
@@ -358,7 +384,8 @@ def build_proactive_prompt(
     # 并让决策标记被翻译（如 `[決定：沈黙]（决定：沉默）`）。
     # 语言规则改由下方 monologue 里的 _proactive_lang_rules 按字段精确控制。
     system_prompt = _build_system(card, user_name, preset=preset, reply_lang=reply_lang,
-                                  translation_lang=translation_lang, lang_instruction=False)
+                                  translation_lang=translation_lang, lang_instruction=False,
+                                  face_emotions=face_emotions)
 
     lang_rules = _proactive_lang_rules(reply_lang, translation_lang, thought_lang)
 
@@ -366,13 +393,15 @@ def build_proactive_prompt(
         # 思维链模式：自由思考
         monologue = _build_proactive_cot_instruction(
             trigger_reason, emotion_summary, chat_history, elapsed_desc, memories,
-            earlier_summary, time_context, think_seed, recent_inner, can_look, lang_rules
+            earlier_summary, time_context, think_seed, recent_inner, can_look, lang_rules,
+            face_emotions
         )
     else:
         # JSON 模式：原有逻辑（完全不变）
         monologue = _build_proactive_json_instruction(
             user_name, trigger_reason, emotion_summary, chat_history, elapsed_desc, voice_emotions,
-            memories, earlier_summary, time_context, think_seed, recent_inner, can_look, lang_rules
+            memories, earlier_summary, time_context, think_seed, recent_inner, can_look, lang_rules,
+            face_emotions
         )
 
     messages = _history_to_messages(chat_history)
@@ -384,18 +413,24 @@ def _build_proactive_json_instruction(
     user_name: str, trigger_reason: str, emotion_summary: str, chat_history: list[dict], elapsed_desc: str,
     voice_emotions: list[str] | None, memories: list[str] | None, earlier_summary: str,
     time_context: str, think_seed: str, recent_inner: list[str] | None, can_look: bool,
-    lang_rules: str = ""
+    lang_rules: str = "",
+    face_emotions: list[str] | None = None,
 ) -> str:
     """构建 JSON 格式的内心独白指令（原有逻辑）。
 
     Args:
         lang_rules: 按字段的语言规则（thought/决策标记/text 各自语言），由
             _proactive_lang_rules 生成，拼在指令末尾。
+        face_emotions: 立绘库可用表情档（库驱动），非空时要求输出 face 字段。
     """
     # 情绪字段说明：主动路径用 JSON 的 emotion 字段（非 <emo:> 前缀）传语气给 TTS
     emo_opts = " / ".join(voice_emotions) if voice_emotions else ""
     emo_field = (f', "emotion": "从 [{emo_opts}] 选一个最贴合的说话语气"'
                  if emo_opts else "")
+    # 立绘表情字段：与 emotion（语气）独立，决定画面神态。空立绘库时不要求。
+    face_opts = " / ".join(face_emotions) if face_emotions else ""
+    face_field = (f', "face": "从 [{face_opts}] 选一个最贴合此刻神态的立绘表情"'
+                  if face_opts else "")
     # 情绪状态增量：这次内心活动让你内在情绪如何变化（喂给 apply_delta，影响主动行为/记忆）。
     # 区别于上面的 emotion（那是说话语气/TTS），这里是心理状态五维的细微增量。
     delta_field = (
@@ -445,11 +480,11 @@ def _build_proactive_json_instruction(
         + (
             f'{{"thought": "你此刻真实、具体的内心想法（不能为空）", '
             f'"action": "speak、silent 或 look(若好奇想看看他在干嘛)", '
-            f'"text": "若 speak 则写你要说的话(用平时口吻)，其他情况留空"{emo_field}{delta_field}}}'
+            f'"text": "若 speak 则写你要说的话(用平时口吻)，其他情况留空"{emo_field}{face_field}{delta_field}}}'
             if can_look else
             f'{{"thought": "你此刻真实、具体的内心想法（不能为空）", '
             f'"action": "speak 或 silent", '
-            f'"text": "若 speak 则写你要说的话(用平时口吻)，若 silent 则留空"{emo_field}{delta_field}}}'
+            f'"text": "若 speak 则写你要说的话(用平时口吻)，若 silent 则留空"{emo_field}{face_field}{delta_field}}}'
         )
     )
     return monologue
@@ -458,13 +493,15 @@ def _build_proactive_json_instruction(
 def _build_proactive_cot_instruction(
     trigger_reason: str, emotion_summary: str, chat_history: list[dict], elapsed_desc: str,
     memories: list[str] | None, earlier_summary: str, time_context: str, think_seed: str,
-    recent_inner: list[str] | None, can_look: bool, lang_rules: str = ""
+    recent_inner: list[str] | None, can_look: bool, lang_rules: str = "",
+    face_emotions: list[str] | None = None,
 ) -> str:
     """构建思维链（CoT）格式的内心独白指令。
 
     Args:
         lang_rules: 按字段的语言规则（思考/决策标记/要说的话各自语言），由
             _proactive_lang_rules 生成，拼在指令末尾。
+        face_emotions: 立绘库可用表情档（库驱动），非空时要求决策行附 [face:表情]。
     """
     # 可联想的素材：长期记忆 + 早先聊天摘要
     material = []
@@ -482,6 +519,16 @@ def _build_proactive_cot_instruction(
     seed_line = f"一个可以由头：{think_seed}。" if think_seed else ""
 
     lang_block = f"\n\n{lang_rules}" if lang_rules else ""
+
+    # 立绘表情标记说明（库驱动，空立绘库则不要求）
+    face_opts = " / ".join(face_emotions) if face_emotions else ""
+    face_block = (
+        f"\n\n你在画面上的立绘表情用 `[face:表情]` 标注（从 [{face_opts}] 选一个最贴合此刻神态的），"
+        f"与说话语气独立。**speak 时**把 `[face:表情]` 放在决策标记同一行末尾，"
+        f"如 `[决定：开口] \"要说的话\" [face:得意]`；silent 时也标，"
+        f"如 `[决定：沉默] [face:思考]`。"
+        if face_opts else ""
+    )
 
     monologue = (
         f"[系统提示·内心独白]\n"
@@ -507,7 +554,8 @@ def _build_proactive_cot_instruction(
         f"决定等ta回来再说），**不要**把本来想说出口的话写进思考过程。\n\n"
         f"**重要**：决策标记之前**必须**先写出至少一两句真实、具体的思考过程，"
         f"不能一上来就直接给决策标记（那样意识流里就只剩一个空决定，没有任何内心活动）。\n\n"
-        f"思考完毕后，另起一行，用以下格式之一表达你的决定：\n"
+        + (f"{face_block.lstrip()}\n\n" if face_block else "")
+        + f"思考完毕后，另起一行，用以下格式之一表达你的决定：\n"
         + (
             f"[决定：开口] \"要说的话\"\n"
             f"[决定：沉默]\n"

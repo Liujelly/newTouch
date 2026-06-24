@@ -73,11 +73,18 @@ def _parse_monologue_cot(raw: str) -> dict:
 
     失败兜底为沉默。决策标记关键词兼容简体/繁体/日文汉字 + 全/半角括号。
     """
-    default = {"thought": "", "action": "silent", "text": "", "emotion": "", "emotion_delta": {}}
+    default = {"thought": "", "action": "silent", "text": "", "emotion": "", "face": "", "emotion_delta": {}}
     if not raw or not raw.strip():
         return default
 
     raw = raw.strip()
+
+    # 立绘表情标记 [face:得意]（CoT 用方括号格式，可能出现在决策行末尾或 thought 里）
+    face = ""
+    face_match = re.search(r'\[face\s*:\s*([\w]+)\s*\]', raw, re.IGNORECASE)
+    if face_match:
+        face = face_match.group(1)
+        raw = re.sub(r'\[face\s*:\s*[\w]+\s*\]', '', raw, flags=re.IGNORECASE).strip()
 
     action = "silent"  # 默认沉默
     decision_match = None
@@ -125,6 +132,7 @@ def _parse_monologue_cot(raw: str) -> dict:
         "action": action,
         "text": text,
         "emotion": emotion,
+        "face": face,
         "emotion_delta": {},  # CoT 模式下情绪增量单独判断
     }
 
@@ -137,34 +145,35 @@ def _parse_monologue(raw: str, use_cot: bool = False) -> dict:
         use_cot: 是否使用 CoT 解析（True=思维链，False=JSON）
 
     Returns:
-        {thought, action, text, emotion, emotion_delta}
+        {thought, action, text, emotion, face, emotion_delta}
     """
     if use_cot:
         return _parse_monologue_cot(raw)
 
     # 原有 JSON 解析逻辑（完全不变）
-    default = {"thought": "", "action": "silent", "text": "", "emotion": "", "emotion_delta": {}}
+    default = {"thought": "", "action": "silent", "text": "", "emotion": "", "face": "", "emotion_delta": {}}
     if not raw or not raw.strip():
         return default
     # 提取第一个 JSON 对象（容忍模型外面套了 ```json 或解释文字）
     m = re.search(r"\{.*\}", raw, re.DOTALL)
     if not m:
         # 没有 JSON：把整段当作想说的话（兼容模型不守格式）
-        return {"thought": "", "action": "speak", "text": raw.strip(), "emotion": "", "emotion_delta": {}}
+        return {"thought": "", "action": "speak", "text": raw.strip(), "emotion": "", "face": "", "emotion_delta": {}}
     try:
         data = json.loads(m.group(0))
     except (json.JSONDecodeError, ValueError):
-        return {"thought": "", "action": "speak", "text": raw.strip(), "emotion": "", "emotion_delta": {}}
+        return {"thought": "", "action": "speak", "text": raw.strip(), "emotion": "", "face": "", "emotion_delta": {}}
     action = str(data.get("action", "silent")).strip().lower()
     text = str(data.get("text", "")).strip()
     thought = str(data.get("thought", "")).strip()
     emotion = str(data.get("emotion", "")).strip().lower()
+    face = str(data.get("face", "")).strip()
     delta = _parse_emotion_delta(data.get("emotion_delta"))
     if action == "look":
-        return {"thought": thought, "action": "look", "text": "", "emotion": emotion, "emotion_delta": delta}
+        return {"thought": thought, "action": "look", "text": "", "emotion": emotion, "face": face, "emotion_delta": delta}
     if action != "speak" or not text:
-        return {"thought": thought, "action": "silent", "text": "", "emotion": emotion, "emotion_delta": delta}
-    return {"thought": thought, "action": "speak", "text": text, "emotion": emotion, "emotion_delta": delta}
+        return {"thought": thought, "action": "silent", "text": "", "emotion": emotion, "face": face, "emotion_delta": delta}
+    return {"thought": thought, "action": "speak", "text": text, "emotion": emotion, "face": face, "emotion_delta": delta}
 
 
 class Cognition:
@@ -219,6 +228,7 @@ class Cognition:
         voice_emotions: list[str] | None = None,
         earlier_summary: str = "",
         time_context: str = "",
+        face_emotions: list[str] | None = None,
     ) -> AsyncIterator[str]:
         """反应路径: 流式产出回复文本片段。anthropic 后端支持工具调用。"""
         system_prompt, messages = build_reactive_prompt(
@@ -234,6 +244,7 @@ class Cognition:
             voice_emotions=voice_emotions,
             earlier_summary=earlier_summary,
             time_context=time_context,
+            face_emotions=face_emotions,
         )
         log.info("[LLM] 反应路径调用 %s/%s（用户：%s）",
                  self._backend, self._model, (user_text or "")[:40])
