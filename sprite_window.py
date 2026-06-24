@@ -114,24 +114,25 @@ class SpriteWindow(QWidget):
         screen = QApplication.primaryScreen().availableGeometry()
         self.move(screen.right() - self.width() - 40, screen.bottom() - self.height() - 40)
 
-        self._make_click_through()
+        # 拖动状态：不点击穿透（始终可拖），代价是浮窗会挡住后面操作
+        self._drag_offset = None
 
-    def _make_click_through(self) -> None:
-        """Windows：让窗口鼠标点击穿透（不挡桌面操作）。"""
-        if sys.platform != "win32":
-            return
-        try:
-            import ctypes
-            GWL_EXSTYLE = -20
-            WS_EX_LAYERED = 0x00080000
-            WS_EX_TRANSPARENT = 0x00000020
-            hwnd = int(self.winId())
-            style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-            ctypes.windll.user32.SetWindowLongW(
-                hwnd, GWL_EXSTYLE, style | WS_EX_LAYERED | WS_EX_TRANSPARENT
-            )
-        except (OSError, AttributeError):
-            pass
+    def mousePressEvent(self, event) -> None:
+        """按住左键开始拖动窗口。"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event) -> None:
+        """拖动窗口。"""
+        if self._drag_offset is not None and event.buttons() & Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_offset)
+            event.accept()
+
+    def mouseReleaseEvent(self, event) -> None:
+        """松开结束拖动。"""
+        self._drag_offset = None
+        event.accept()
 
     def show_face(self, face: str) -> None:
         """Qt 信号槽：收到 face 换图（主线程执行）。"""

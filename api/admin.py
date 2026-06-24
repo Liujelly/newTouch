@@ -12,7 +12,7 @@ from typing import Any
 
 import httpx
 import yaml
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -564,6 +564,81 @@ async def switch_voice_model(body: ModelSwitchBody) -> dict:
     except Exception as e:  # noqa: BLE001
         results["error"] = str(e)
     return results
+
+
+# ── 立绘库（按角色存 data/characters/{角色}/sprites/）─────────
+def _sprites_dir(char_id: str) -> Path:
+    """角色立绘目录 data/characters/{char}/sprites/（自动创建）。"""
+    d = _DATA / "characters" / _safe_name(char_id) / "sprites"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _sprites_json_path(char_id: str) -> Path:
+    return _sprites_dir(char_id) / "sprites.json"
+
+
+@app.get("/api/sprites/{char_id}")
+def get_sprites(char_id: str) -> dict:
+    """读角色立绘库 {emotions: {情绪名: {image: 文件名}}}。不存在返回空。"""
+    p = _sprites_json_path(char_id)
+    if not p.exists():
+        return {"emotions": {}}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return {"emotions": {}}
+        if "emotions" not in data:
+            data["emotions"] = {}
+        return data
+    except (json.JSONDecodeError, ValueError, OSError):
+        return {"emotions": {}}
+
+
+class SpriteLibUpdate(BaseModel):
+    lib: dict
+
+
+@app.put("/api/sprites/{char_id}")
+def put_sprites(char_id: str, body: SpriteLibUpdate) -> dict:
+    """保存角色立绘库 sprites.json。"""
+    _sprites_json_path(char_id).write_text(
+        json.dumps(body.lib, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return {"ok": True}
+
+
+@app.post("/api/sprites/{char_id}/image")
+async def upload_sprite_image(char_id: str, file: UploadFile = File(...)) -> dict:
+    """上传一张立绘图片到角色 sprites/ 目录，返回 {filename}。"""
+    # 防路径穿越：原始 filename 含路径分隔符/.. 直接拒（不靠 Path.name 静默改名）
+    raw_name = file.filename or "sprite.png"
+    if "/" in raw_name or "\\" in raw_name or ".." in raw_name:
+        raise HTTPException(400, "非法文件名")
+    fname = _safe_name(raw_name)
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "空文件")
+    (_sprites_dir(char_id) / fname).write_bytes(data)
+    return {"filename": fname}
+
+
+@app.delete("/api/sprites/{char_id}/image/{filename}")
+def delete_sprite_image(char_id: str, filename: str) -> dict:
+    """删除角色立绘目录里的一张图片。"""
+    p = _sprites_dir(char_id) / _safe_name(filename)
+    if p.exists():
+        p.unlink()
+    return {"ok": True}
+
+
+@app.get("/api/sprites/{char_id}/image/{filename}")
+def get_sprite_image(char_id: str, filename: str):
+    """返回立绘图片（前端预览用）。"""
+    p = _sprites_dir(char_id) / _safe_name(filename)
+    if not p.exists():
+        raise HTTPException(404, "图片不存在")
+    return FileResponse(str(p))
 
 
 # ── 角色卡 ────────────────────────────────────────────────────

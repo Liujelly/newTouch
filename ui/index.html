@@ -515,6 +515,51 @@ input:checked+.slider::before{background:#fff;transform:translateX(16px)}
       </div>
     </div>
 
+    <!-- 立绘库（按角色存，<face:表情> 标签驱动差分） -->
+    <div v-if="tab==='sprites'">
+      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+        <select v-model="spChar" @change="loadSprites" style="width:160px">
+          <option v-for="c in cardList" :value="c.id">{{c.name}}</option>
+        </select>
+        <span style="font-size:12px;color:#64748b" v-if="spChar">立绘库存于 data/characters/{{spChar}}/sprites/</span>
+      </div>
+      <div v-if="spChar && spDoc">
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;margin-bottom:10px;align-items:center">
+            <span style="font-size:12px;color:#64748b">表情档 — 主脑回复时按 &lt;face:表情&gt; 标签切换立绘。与语音库 &lt;emo:&gt; 独立，可不同。</span>
+            <span style="display:flex;gap:6px">
+              <input v-model="spNewEmo" placeholder="表情名(如 得意/thinking)" style="width:150px">
+              <button class="btn btn-sm btn-primary" @click="addSpEmo">+ 新增表情</button>
+            </span>
+          </div>
+          <div v-if="!Object.keys(spDoc.emotions||{}).length" class="empty">暂无表情档，点击新增</div>
+          <div class="wb-entry" v-for="(info,emo) in (spDoc.emotions||{})">
+            <div class="wb-entry-hd">
+              <span style="font-size:13px;color:#93c5fd;font-weight:600">{{emo}}</span>
+              <button class="btn btn-danger btn-sm" @click="delete spDoc.emotions[emo]">删除表情</button>
+            </div>
+            <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
+              <div style="width:160px;height:200px;border:1px dashed #475569;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#0f172a">
+                <img v-if="info.image" :src="'/api/sprites/'+encodeURIComponent(spChar)+'/image/'+encodeURIComponent(info.image)" style="max-width:100%;max-height:100%;object-fit:contain">
+                <span v-else style="font-size:11px;color:#64748b">未上传</span>
+              </div>
+              <div style="flex:1;min-width:200px">
+                <div class="field-row">
+                  <label>图片文件</label>
+                  <input v-model="info.image" placeholder="上传后自动填入，或手填文件名">
+                </div>
+                <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
+                  <input type="file" accept="image/*" @change="e=>uploadSpImage(emo,e.target.files[0])" style="font-size:11px">
+                  <button class="btn btn-danger btn-sm" v-if="info.image" @click="deleteSpImage(emo)">删图</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:10px"><button class="btn btn-primary" @click="saveSprites">保存立绘库</button></div>
+        </div>
+      </div>
+    </div>
+
     <!-- 系统日志 -->
     <div v-if="tab==='logs'">
       <div class="card">
@@ -569,6 +614,7 @@ createApp({
       {id:'preset',label:'预设'},
       {id:'wb',label:'世界书'},
       {id:'voices',label:'语音库'},
+      {id:'sprites',label:'立绘库'},
       {id:'logs',label:'日志'},
     ]
     const tab = ref('chat')
@@ -588,6 +634,7 @@ createApp({
       if (t==='preset') loadPresetList()
       if (t==='wb') loadWbList()
       if (t==='voices') loadVlList()
+      if (t==='sprites') { loadCardList(); loadSprites() }
       if (t==='logs') loadLogs()
     })
 
@@ -754,6 +801,10 @@ createApp({
     const cardName = ref('')
     const cardNewName = ref('')
     const cardData = ref(null)
+    // ── 立绘库 ──
+    const spChar = ref('')
+    const spDoc = ref(null)
+    const spNewEmo = ref('')
     const cardFields = [
       {k:'name',label:'名字'},{k:'first_mes',label:'开场白'},
       {k:'description',label:'角色描述',multi:true,rows:4},
@@ -1037,6 +1088,54 @@ createApp({
       const d = await r.json()
       switchModelResult.value = d.error ? ('失败: '+d.error) : JSON.stringify(d)
     }
+
+    // ── 立绘库（按角色） ──────────────────────────────────
+    async function loadSprites() {
+      if (!spChar.value) {
+        // 默认选当前角色
+        if (!cardList.value.length) await loadCardList()
+        if (cardList.value.length) {
+          const cur = cfg.value?.character?.name || cardList.value[0].id
+          spChar.value = cardList.value.some(c => c.id === cur) ? cur : cardList.value[0].id
+        }
+      }
+      if (!spChar.value) return
+      const d = await fetch('/api/sprites/'+encodeURIComponent(spChar.value)).then(r=>r.json())
+      spDoc.value = d
+    }
+    function addSpEmo() {
+      const emo = (spNewEmo.value||'').trim()
+      if (!emo || !spDoc.value) return
+      if (!spDoc.value.emotions) spDoc.value.emotions = {}
+      if (spDoc.value.emotions[emo]) { showToast('表情已存在', false); return }
+      spDoc.value.emotions[emo] = {image: ''}
+      spNewEmo.value = ''
+    }
+    async function uploadSpImage(emo, file) {
+      if (!file || !spChar.value) return
+      const fd = new FormData()
+      fd.append('file', file)
+      const r = await fetch('/api/sprites/'+encodeURIComponent(spChar.value)+'/image',{method:'POST',body:fd})
+      if (r.ok) {
+        const d = await r.json()
+        spDoc.value.emotions[emo].image = d.filename
+        showToast('✓ 图片已上传（记得保存）', true)
+      } else {
+        showToast('上传失败', false)
+      }
+    }
+    async function deleteSpImage(emo) {
+      if (!spChar.value || !spDoc.value.emotions[emo]?.image) return
+      await fetch('/api/sprites/'+encodeURIComponent(spChar.value)+'/image/'+encodeURIComponent(spDoc.value.emotions[emo].image),{method:'DELETE'})
+      spDoc.value.emotions[emo].image = ''
+    }
+    async function saveSprites() {
+      if (!spChar.value) return
+      const r = await fetch('/api/sprites/'+encodeURIComponent(spChar.value),
+        {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({lib:spDoc.value})})
+      showToast(r.ok?'✓ 立绘库已保存':'保存失败', r.ok)
+    }
+
     // 角色卡语音库绑定
     const voiceLibList = ref([])
     const cardVoiceLib = computed({
@@ -1123,6 +1222,7 @@ createApp({
       loadVoiceLib, createVoiceLib, delVoiceLib, addVlEmo, saveVoiceLib, switchVoiceModel,
       getEmoRefs, addEmoRef, removeEmoRef,
       voiceLibList, cardVoiceLib, cardWakeWords, cardReplyLang, cardTranslationLang,
+      spChar, spDoc, spNewEmo, loadSprites, addSpEmo, uploadSpImage, deleteSpImage, saveSprites,
     }
   }
 }).mount('#app')
