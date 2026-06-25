@@ -219,14 +219,18 @@ class SpriteWindow(QWidget):
         self._bubble.hide()
 
     def _layout_bubble(self) -> None:
-        """气泡定位在立绘上方独立区：水平居中，垂直顶部，高度随文字增长（限气泡区）。"""
+        """气泡定位在立绘上方独立区：水平居中，底部贴立绘顶部（留 6px 间距）。
+
+        气泡底部对齐立绘顶部，字少时气泡往下贴、和立绘近，不留大空；字多时往上长（限气泡区）。
+        """
         self._bubble.setMaximumWidth(self._bubble_width)
         self._bubble.adjustSize()
         bw = min(self._bubble.sizeHint().width(), self.width())
         bh = min(self._bubble.sizeHint().height(), self._bubble_area_h - 8)
         self._bubble.resize(bw, bh)
         x = max(0, (self.width() - bw) // 2)
-        y = 4
+        # 底部贴立绘顶部（立绘 y = _bubble_area_h），留 6px 间距
+        y = self._bubble_area_h - bh - 6
         self._bubble.move(x, y)
         self._bubble.raise_()
 
