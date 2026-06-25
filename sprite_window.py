@@ -136,13 +136,16 @@ class SpriteWindow(QWidget):
         self._face_reset_timeout = float(config.get("sprite.face_reset_timeout", 8))
         self._face_reset_timer = QTimer(self)
         self._face_reset_timer.setSingleShot(True)
-        self._face_reset_timer.timeout.connect(lambda: self._show_face("neutral"))
+        def _on_face_reset():
+            self._show_face("neutral")
+        self._face_reset_timer.timeout.connect(_on_face_reset)
 
         # 布局：上方气泡区 + 下方立绘区。立绘按固定高度缩放，气泡在上方独立区不挡脸。
         self._portrait_h = 480  # 立绘固定高度
         self._bubble_area_h = 140  # 气泡区预留高度
         self._bubble_width = 300  # 气泡最大宽度
         self._bubble_active = False  # 当前是否在一段回复流式期间
+        self._cur_face_label = "neutral"  # 当前显示的表情名（供 text_end 判断要不要恢复）
 
         # 窗口初始尺寸 = 气泡区 + 立绘区（无气泡时气泡区也预留，避免布局跳动）
         self.resize(self._bubble_width, self._bubble_area_h + self._portrait_h)
@@ -175,16 +178,12 @@ class SpriteWindow(QWidget):
     def show_face(self, face: str) -> None:
         """Qt 信号槽：收到 face 换图（主线程执行）。
 
-        非 neutral 表情：显示后启动恢复定时器，到时自动回 neutral。
-        neutral：停止恢复定时器（已平静，无需再恢复）。
+        只切图，不启动恢复定时器——face_reset 从回复结束(show_text_end)算起，
+        和气泡淡出同起点，保证表情(8s)比气泡(5s)晚消失。
+        新回复开头的 face 停掉上一轮未触发的恢复定时器（这轮表情先显示着）。
         """
         self._show_face(face)
-        if self._face_reset_timeout <= 0:
-            return
-        if face == "neutral":
-            self._face_reset_timer.stop()
-        else:
-            self._face_reset_timer.start(int(self._face_reset_timeout * 1000))
+        self._face_reset_timer.stop()  # 新 face 来了，取消上一轮的恢复倒计时
 
     def show_text(self, text: str) -> None:
         """Qt 信号槽：收到增量 chunk，追加到气泡（流式打字效果），气泡在立绘上方独立区。
@@ -203,10 +202,17 @@ class SpriteWindow(QWidget):
         self._bubble.show()
 
     def show_text_end(self) -> None:
-        """Qt 信号槽：一段回复结束，启动气泡淡出定时器。"""
+        """Qt 信号槽：一段回复结束：启动气泡淡出 + 表情恢复定时器（同起点）。
+
+        表情 face_reset_timeout(默认8s) > 气泡 bubble_timeout(默认5s)，故表情比气泡晚消失。
+        """
         self._bubble_active = False
         if self._bubble_timeout > 0:
             self._bubble_timer.start(int(self._bubble_timeout * 1000))
+        # 表情恢复：当前非 neutral 才启动（neutral 无需恢复）
+        if (self._face_reset_timeout > 0 and self._cur_face_label != "neutral"
+                and not self._face_reset_timer.isActive()):
+            self._face_reset_timer.start(int(self._face_reset_timeout * 1000))
 
     def _hide_bubble(self) -> None:
         """气泡淡出：清空文本 + 隐藏。"""
@@ -226,6 +232,7 @@ class SpriteWindow(QWidget):
         self._bubble.raise_()
 
     def _show_face(self, face: str) -> None:
+        self._cur_face_label = face
         path = image_path(face, self._mapping)
         # 立绘区高度固定 _portrait_h，放窗口下方（气泡区之下）
         label_h = self._portrait_h
