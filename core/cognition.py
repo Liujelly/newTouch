@@ -461,7 +461,12 @@ class Cognition:
             if not tool_uses:
                 # 没有工具调用，解析最终响应
                 text = "".join(b.text for b in resp.content if hasattr(b, "text"))
-                return _parse_monologue(text, use_cot=use_cot)
+                result = _parse_monologue(text, use_cot=use_cot)
+                log.debug("[LLM] 主动路径完整输出: %s", text[:500])
+                log.debug("[LLM] 主动路径解析: action=%s emotion=%s face=%s text=%r",
+                          result.get("action"), result.get("emotion"), result.get("face"),
+                          (result.get("text") or "")[:80])
+                return result
 
             # 有工具调用：执行工具
             msgs.append({"role": "assistant", "content": resp.content})
@@ -525,7 +530,12 @@ class Cognition:
             if not choice.message.tool_calls:
                 # 没有工具调用，解析最终响应
                 text = choice.message.content or ""
-                return _parse_monologue(text, use_cot=use_cot)
+                result = _parse_monologue(text, use_cot=use_cot)
+                log.debug("[LLM] 主动路径完整输出: %s", text[:500])
+                log.debug("[LLM] 主动路径解析: action=%s emotion=%s face=%s text=%r",
+                          result.get("action"), result.get("emotion"), result.get("face"),
+                          (result.get("text") or "")[:80])
+                return result
 
             # 有工具调用：执行工具
             oai_messages.append({

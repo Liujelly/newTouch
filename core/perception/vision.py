@@ -116,9 +116,11 @@ class Vision:
             return self._latest
 
         frame = None
+        frame_src = ""
         if self._passive_running():
             # 被动循环常开摄像头：复用它缓存的最新帧，避免独占冲突
             frame = self._latest_frame_raw
+            frame_src = "缓存帧(被动循环)"
             if frame is None:
                 # 循环刚启动还没抓到帧，稍等一下重试
                 for _ in range(10):
@@ -137,11 +139,16 @@ class Vision:
             cap.release()
             if ok:
                 frame = f
+                frame_src = f"临时开摄像头(index={idx})"
 
         if frame is None:
+            log.warning("look_now 抓帧失败（无可用帧）")
             return None
         self._last_look_ts = now
+        log.info("look_now 抓帧来源: %s", frame_src or "未知")
         caption = await self._vlm_caption(frame, 0.0)
+        if caption:
+            log.info("look_now caption: %s", (caption.caption or "")[:120])
         self._latest = caption
         return caption
 
