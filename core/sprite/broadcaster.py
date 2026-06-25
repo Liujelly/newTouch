@@ -69,11 +69,11 @@ class FaceBroadcaster:
                 pass
             log.info("浮窗已断开: %s", peer)
 
-    async def push(self, face: str, character: str) -> None:
+    async def _broadcast(self, obj: dict) -> None:
         """向所有连上的浮窗推送一行 JSON。无 client 时丢弃。"""
         if not self._started or not self._clients:
             return
-        line = json.dumps({"face": face, "character": character}, ensure_ascii=False) + "\n"
+        line = json.dumps(obj, ensure_ascii=False) + "\n"
         data = line.encode("utf-8")
         dead: list[asyncio.StreamWriter] = []
         for writer in self._clients:
@@ -89,6 +89,17 @@ class FaceBroadcaster:
                 await writer.drain()
             except (ConnectionError, OSError):
                 self._clients.discard(writer)
+
+    async def push(self, face: str, character: str) -> None:
+        """推送立绘表情变化。"""
+        await self._broadcast({"face": face, "character": character})
+
+    async def push_text(self, text: str, character: str) -> None:
+        """推送一句台词（浮窗气泡显示）。逐句推，和 TTS 同步。"""
+        if not text:
+            return
+        await self._broadcast({"text": text, "character": character})
+
 
     def has_clients(self) -> bool:
         return bool(self._clients)

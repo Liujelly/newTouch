@@ -280,12 +280,15 @@ class Speaker:
 
         try:
             if not tts_on:
-                # 纯文本：边读边打印，读完即触发回调
+                # 纯文本：边读边打印，逐句推气泡，读完即触发回调
                 printed_header = False
                 async for sentence in _split_sentences(text_stream):
                     if self._interrupt.is_set():
                         break
                     full.append(sentence)
+                    clean = strip_all_emotion_tags(_strip_actions(sentence))
+                    if clean:
+                        self._broadcast_text(clean)
                     if not printed_header:
                         print(f"\n{self._name} > ", end="", flush=True)
                         printed_header = True
@@ -404,12 +407,24 @@ class Speaker:
         self._cur_face = m.group(1) if m else "neutral"
         self._broadcast_face()
 
+    def _broadcast_text(self, text: str) -> None:
+        """把一句台词推给立绘浮窗气泡（逐句推，和 TTS 同步）。失败静默。"""
+        b = self._broadcaster
+        if b is None or not text:
+            return
+        try:
+            asyncio.create_task(b.push_text(text, self._name))
+        except RuntimeError:
+            pass
+
     async def _synth_and_play(self, sentence: str) -> None:
         sentence = _strip_actions(sentence)
         # 清理任意位置的 <emo:>/<face:> 标签（防跨 chunk 的第二标签漏剥后进 TTS 被朗读）
         sentence = strip_all_emotion_tags(sentence)
         if not sentence:
             return
+        # 推这句给立绘浮窗气泡（和 TTS 同步逐句显示）
+        self._broadcast_text(sentence)
         try:
             audio = await self._tts_request(sentence)
             if audio and not self._interrupt.is_set():

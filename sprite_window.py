@@ -25,7 +25,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from PyQt6.QtCore import Qt, pyqtSignal, QObject
+from PyQt6.QtCore import Qt, pyqtSignal, QObject, QTimer
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import QApplication, QLabel, QWidget
 
@@ -34,9 +34,10 @@ from core.sprite.store import load_sprites, image_path
 
 
 class FaceReceiver(QObject):
-    """TCP client 后台线程：连主程序收 face，发 Qt 信号给主线程换图。"""
+    """TCP client 后台线程：连主程序收 face/台词，发 Qt 信号给主线程。"""
 
     face_received = pyqtSignal(str)  # face 字符串
+    text_received = pyqtSignal(str)  # 台词字符串（气泡显示）
 
     def __init__(self, host: str, port: int) -> None:
         super().__init__()
@@ -67,8 +68,12 @@ class FaceReceiver(QObject):
                             continue
                         try:
                             obj = json.loads(line)
-                            face = obj.get("face") or "neutral"
-                            self.face_received.emit(face)
+                            if "face" in obj:
+                                self.face_received.emit(obj.get("face") or "neutral")
+                            if "text" in obj:
+                                txt = obj.get("text") or ""
+                                if txt:
+                                    self.text_received.emit(txt)
                         except (json.JSONDecodeError, ValueError):
                             pass
             except (OSError, ConnectionError):
@@ -106,6 +111,22 @@ class SpriteWindow(QWidget):
         self._label = QLabel(self)
         self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
+        # 台词气泡：立绘头顶上方，圆角白底黑字，超时自动消失
+        self._bubble = QLabel(self)
+        self._bubble.setWordWrap(True)
+        self._bubble.setMaximumWidth(300)
+        self._bubble.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._bubble.setStyleSheet(
+            "QLabel { background: rgba(255,255,255,235); color: #1e293b;"
+            "border-radius: 12px; padding: 8px 12px; font-size: 14px; }"
+        )
+        self._bubble.hide()
+        # 气泡超时定时器（config sprite.bubble_timeout，默认 5s；0=不自动消失）
+        self._bubble_timeout = float(config.get("sprite.bubble_timeout", 5))
+        self._bubble_timer = QTimer(self)
+        self._bubble_timer.setSingleShot(True)
+        self._bubble_timer.timeout.connect(self._bubble.hide)
+
         # 初始尺寸（无图时占位）
         self.resize(360, 480)
         self._show_face("neutral")
@@ -137,6 +158,29 @@ class SpriteWindow(QWidget):
     def show_face(self, face: str) -> None:
         """Qt 信号槽：收到 face 换图（主线程执行）。"""
         self._show_face(face)
+
+    def show_text(self, text: str) -> None:
+        """Qt 信号槽：收到一句台词，气泡显示在立绘头顶上方，重置超时。"""
+        if not text:
+            return
+        self._bubble.setText(text)
+        self._bubble.adjustSize()
+        # 限制气泡宽度后重算高度（wordWrap 需要先给宽再 adjustSize）
+        w = min(self._bubble.sizeHint().width(), 300)
+        self._bubble.setFixedWidth(w)
+        self._bubble.adjustSize()
+        bw, bh = self._bubble.width(), self._bubble.height()
+        # 定位：水平居中于立绘，垂直在立绘上方（留 8px 间距）；上方不够则放下方
+        x = max(0, (self.width() - bw) // 2)
+        y = self._label.y() - bh - 8
+        if y < 0:
+            y = self._label.y() + self._label.height() + 8
+        self._bubble.move(x, y)
+        self._bubble.raise_()
+        self._bubble.show()
+        # 重置超时（0=不自动消失，一直显示到下一句覆盖）
+        if self._bubble_timeout > 0:
+            self._bubble_timer.start(int(self._bubble_timeout * 1000))
 
     def _show_face(self, face: str) -> None:
         path = image_path(face, self._mapping)
@@ -173,6 +217,7 @@ def main() -> None:
 
     receiver = FaceReceiver(args.host, args.port)
     receiver.face_received.connect(window.show_face)
+    receiver.text_received.connect(window.show_text)
     t = threading.Thread(target=receiver.run, daemon=True)
     t.start()
 

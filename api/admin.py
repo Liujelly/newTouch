@@ -309,7 +309,9 @@ def get_config_schema() -> list:
             {"k": "host", "label": "广播地址", "type": "text", "restart": True,
              "help": "浮窗通信地址，默认 127.0.0.1（本机）"},
             {"k": "port", "label": "广播端口", "type": "number", "min": 1024, "max": 65535, "restart": True,
-             "help": "主程序 TCP server 端口，浮窗 client 连此端口收表情。改后需重启"},
+             "help": "主程序 TCP server 端口，浮窗 client 连此端口收表情/台词。改后需重启"},
+            {"k": "bubble_timeout", "label": "气泡超时(秒)", "type": "number", "min": 0, "max": 60, "step": 1, "restart": True,
+             "help": "立绘头顶台词气泡说完一句后停这么久消失。0=不消失一直显示。改后需重启"},
         ]},
         {"section": "日志", "key": "logging", "fields": [
             {"k": "enabled", "label": "写日志文件", "type": "toggle",
