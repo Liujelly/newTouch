@@ -172,8 +172,9 @@ class SpriteWindow(QWidget):
         self._input = QLineEdit(self)
         self._input.setPlaceholderText("输入消息，回车发送…")
         self._input.setStyleSheet(
-            "QLineEdit { background: rgba(255,255,255,235); color: #1e293b;"
-            "border-radius: 8px; padding: 6px 10px; font-size: 14px; }"
+            "QLineEdit { background: rgba(30,41,59,235); color: #e2e8f0;"
+            "border: 1px solid #475569; border-radius: 8px; padding: 6px 10px; font-size: 14px; }"
+            "QLineEdit::placeholder { color: #94a3b8; }"
         )
         self._input.hide()
         self._input.returnPressed.connect(self._send_input)
@@ -216,10 +217,12 @@ class SpriteWindow(QWidget):
         self._show_input(event.pos())
 
     def _show_input(self, pos) -> None:
-        """在 pos 处显示输入框并聚焦。"""
+        """在立绘下方（脚那块）显示输入框并聚焦。"""
         w = min(self._bubble_width, self.width() - 8)
         self._input.resize(w, 32)
-        self._input.move(max(0, (self.width() - w) // 2), 4)
+        # 立绘底部稍上（窗口高度 - 输入框高 - 6px）
+        y = self.height() - 32 - 6
+        self._input.move(max(0, (self.width() - w) // 2), y)
         self._input.clear()
         self._input.raise_()
         self._input.show()
