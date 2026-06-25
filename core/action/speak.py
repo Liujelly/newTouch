@@ -263,6 +263,8 @@ class Speaker:
         # 反应路径：包一层流，剥掉开头 <emo:>/<face:> 标签并设 _cur_emotion / _cur_face
         if emotion is None and face is None:
             text_stream = self._strip_emotion_stream(text_stream)
+        # 再包一层：捕获剥标签后的增量 chunk 推给立绘气泡（逐 chunk 流式追加，保留翻译括号）
+        text_stream = self._bubble_stream(text_stream)
         full: list[str] = []
         tts_on = self._t("enabled", True)
         fired = False
@@ -286,9 +288,6 @@ class Speaker:
                     if self._interrupt.is_set():
                         break
                     full.append(sentence)
-                    clean = strip_all_emotion_tags(_strip_actions(sentence))
-                    if clean:
-                        self._broadcast_text(clean)
                     if not printed_header:
                         print(f"\n{self._name} > ", end="", flush=True)
                         printed_header = True
@@ -297,6 +296,7 @@ class Speaker:
                     print()
                 _fire()
                 self._finalize_face(full)  # 无 face 时从全文扫补广播，仍无则 neutral
+                self._broadcast_text_end()  # 通知浮窗回复结束，启动气泡淡出
                 return strip_all_emotion_tags("".join(full))
 
             # TTS：producer 读流入队 + 攒全文，consumer 后台播放
@@ -326,6 +326,7 @@ class Speaker:
         finally:
             _fire()  # 兜底：异常路径也确保回调触发一次
             self._finalize_face(full)  # 无 face 时从全文扫补广播，仍无则 neutral
+            self._broadcast_text_end()  # 通知浮窗回复结束，启动气泡淡出
             self._speaking = False
         # 最终清理：移除全文中所有残留的 <emo:xxx>/<face:xxx> 标签（LLM 可能在末尾/中间误输出）
         return strip_all_emotion_tags("".join(full))
@@ -334,27 +335,39 @@ class Speaker:
         """从流开头解析 <emo:> / <face:> 标签：设 _cur_emotion / _cur_face，剥标签后透传。
 
         两个标签都在开头、顺序不定（如 <emo:happy><face:得意>）。可能跨多个 chunk，
-        故先缓冲到能判定为止（攒够 '>' 或确定开头不是标签）。
+        故持续缓冲+剥离开头标签，直到遇到非标签内容才放行——这样跨 chunk 的第二
+        标签（如先到 <emo:> 后到 <face:>）也能在正文出现前被剥掉并广播，不必等收尾。
         解析到 emo 设 _cur_emotion、解析到 face 设 _cur_face 并广播给浮窗。
         """
         buf = ""
-        decided = False
+        done = False  # 已遇到非标签内容，后续 chunk 直接放行
         async for chunk in stream:
-            if decided:
+            if done:
                 yield chunk
                 continue
             buf += chunk
-            # 还没攒到能判定的程度：开头是 '<emo:'/'<face:' 前缀且未闭合，继续等
-            stripped = buf.lstrip()
-            if "<" in stripped and ">" not in stripped and len(buf) < 40:
-                if _looks_like_partial_tag(stripped):
+            while True:
+                # 尝试剥离开头所有完整标签
+                rest = self._consume_prefix_tags(buf)
+                if rest != buf:
+                    # 剥掉了标签，继续看剩余开头是否还有标签
+                    buf = rest
+                    if not buf:
+                        break  # 全是标签，等下一个 chunk
                     continue
-            decided = True
-            rest = self._consume_prefix_tags(buf)
-            if rest:
-                yield rest
-        # 流结束仍未 decided（极短流）：兜底解析一次
-        if not decided and buf:
+                # buf 开头不是完整标签：判断是否是未闭合的标签前缀（跨 chunk）
+                stripped = buf.lstrip()
+                if "<" in stripped and ">" not in stripped and len(buf) < 40:
+                    if _looks_like_partial_tag(stripped):
+                        break  # 等更多 chunk 闭合标签
+                # 开头是正文（非标签）→ 放行，后续直接 yield
+                if buf:
+                    yield buf
+                done = True
+                buf = ""
+                break
+        # 流结束仍有未放行的 buf（纯标签或极短流）：剥标签后放行剩余
+        if not done and buf:
             rest = self._consume_prefix_tags(buf)
             if rest:
                 yield rest
@@ -408,7 +421,7 @@ class Speaker:
         self._broadcast_face()
 
     def _broadcast_text(self, text: str) -> None:
-        """把一句台词推给立绘浮窗气泡（逐句推，和 TTS 同步）。失败静默。"""
+        """把一段增量文本推给立绘浮窗气泡（逐 chunk 流式追加）。失败静默。"""
         b = self._broadcaster
         if b is None or not text:
             return
@@ -417,14 +430,33 @@ class Speaker:
         except RuntimeError:
             pass
 
+    def _broadcast_text_end(self) -> None:
+        """通知浮窗一段回复结束（启动气泡淡出）。失败静默。"""
+        b = self._broadcaster
+        if b is None:
+            return
+        try:
+            asyncio.create_task(b.push_text_end(self._name))
+        except RuntimeError:
+            pass
+
+    async def _bubble_stream(self, stream: AsyncIterator[str]) -> AsyncIterator[str]:
+        """包一层流：每个 chunk 透传给下游（切句/TTS）同时，剥 emo/face 标签后推给气泡增量。
+
+        保留翻译括号（气泡要显示翻译），只剥 <emo:>/<face:> 标签。
+        """
+        async for chunk in stream:
+            bubble = strip_all_emotion_tags(chunk)
+            if bubble:
+                self._broadcast_text(bubble)
+            yield chunk
+
     async def _synth_and_play(self, sentence: str) -> None:
+        # TTS 用：剥括号动作/翻译 + emo/face 标签（语音不读这些）。气泡增量已由 _bubble_stream 流式推。
         sentence = _strip_actions(sentence)
-        # 清理任意位置的 <emo:>/<face:> 标签（防跨 chunk 的第二标签漏剥后进 TTS 被朗读）
         sentence = strip_all_emotion_tags(sentence)
         if not sentence:
             return
-        # 推这句给立绘浮窗气泡（和 TTS 同步逐句显示）
-        self._broadcast_text(sentence)
         try:
             audio = await self._tts_request(sentence)
             if audio and not self._interrupt.is_set():

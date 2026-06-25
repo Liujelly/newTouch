@@ -135,6 +135,7 @@ sprite:
   host: 127.0.0.1
   port: 17621
   bubble_timeout: 5  # 台词气泡超时秒数（说完一句后停这么久消失，0=不消失一直显示）
+  face_reset_timeout: 8  # 表情切换后过这么久自动回 neutral（0=不恢复，一直停最后表情）
 logging:
   enabled: true
   level: DEBUG

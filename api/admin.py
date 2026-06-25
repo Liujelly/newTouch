@@ -312,6 +312,8 @@ def get_config_schema() -> list:
              "help": "主程序 TCP server 端口，浮窗 client 连此端口收表情/台词。改后需重启"},
             {"k": "bubble_timeout", "label": "气泡超时(秒)", "type": "number", "min": 0, "max": 60, "step": 1, "restart": True,
              "help": "立绘头顶台词气泡说完一句后停这么久消失。0=不消失一直显示。改后需重启"},
+            {"k": "face_reset_timeout", "label": "表情恢复(秒)", "type": "number", "min": 0, "max": 120, "step": 1, "restart": True,
+             "help": "表情切换后过这么久自动回 neutral（情绪过去回归平静）。0=不恢复一直停最后表情。改后需重启"},
         ]},
         {"section": "日志", "key": "logging", "fields": [
             {"k": "enabled", "label": "写日志文件", "type": "toggle",

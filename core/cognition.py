@@ -248,6 +248,9 @@ class Cognition:
         )
         log.info("[LLM] 反应路径调用 %s/%s（用户：%s）",
                  self._backend, self._model, (user_text or "")[:40])
+        log.debug("[LLM] 反应路径 system 含face指令=%s 含emo指令=%s face档=%s",
+                  "立绘表情标签" in system_prompt, "语气标签" in system_prompt,
+                  face_emotions)
         if self._backend == "anthropic":
             async for text in self._anthropic_stream(system_prompt, messages):
                 yield text
@@ -314,6 +317,8 @@ class Cognition:
 
             # 没有工具调用 → 结束
             if not tool_calls:
+                full = "".join(collected_text)
+                log.debug("[LLM] 反应路径完整输出: %s", full[:500])
                 return
 
             # 有工具调用 → 执行 + 回灌

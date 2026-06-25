@@ -161,8 +161,13 @@ class Orchestrator:
         return reply_lang, translation_lang
 
     def _face_emotions(self) -> list[str]:
-        """当前角色立绘库有哪些表情档（库驱动，供 prompt 列出可选表情）。空库返回 []。"""
-        return load_face_emotions(self._cfg, self._card.name)
+        """当前角色立绘库有哪些表情档（库驱动，供 prompt 列出可选表情）。空库返回 []。
+
+        用目录名（config.character.name，隔离键）找立绘库，不用 card.name（展示名）——
+        立绘库按角色目录存（data/characters/{目录名}/），目录名与展示名可能不同（v2.21）。
+        """
+        char_dir_name = self._cfg.get("character.name", "默认")
+        return load_face_emotions(self._cfg, char_dir_name)
 
     def _load_recent_history(self) -> None:
         """从 chat_history.jsonl 尾部读最近 _max_history 条回填短期窗口，实现重启续聊。

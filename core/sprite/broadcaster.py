@@ -95,10 +95,14 @@ class FaceBroadcaster:
         await self._broadcast({"face": face, "character": character})
 
     async def push_text(self, text: str, character: str) -> None:
-        """推送一句台词（浮窗气泡显示）。逐句推，和 TTS 同步。"""
+        """推送一段增量台词（浮窗气泡逐 chunk 流式追加）。"""
         if not text:
             return
         await self._broadcast({"text": text, "character": character})
+
+    async def push_text_end(self, character: str) -> None:
+        """标记一段回复结束（浮窗据此启动气泡淡出）。"""
+        await self._broadcast({"text_end": True, "character": character})
 
 
     def has_clients(self) -> bool:

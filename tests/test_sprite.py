@@ -140,12 +140,21 @@ async def _broadcaster_scenario():
     await b.push_text("", "小触")
     await asyncio.sleep(0.2)
 
+    # push_text_end（回复结束信号）
+    await b.push_text_end("小触")
+    await asyncio.sleep(0.3)
+    data = sock.recv(4096).decode("utf-8").strip()
+    obj = json.loads(data)
+    assert obj == {"text_end": True, "character": "小触"}, f"text_end 收到错误: {obj}"
+    print(f"✅ broadcaster push_text_end 正确: {obj}")
+
     # 无 client 时 push 不崩（关掉 client）
     sock.close()
     await asyncio.sleep(0.3)
     await b.push("思考", "小触")  # 不应抛异常
     await b.push_text("x", "小触")  # 不应抛异常
-    print("✅ 无 client 时 push/push_text 不崩")
+    await b.push_text_end("小触")  # 不应抛异常
+    print("✅ 无 client 时 push/push_text/push_text_end 不崩")
 
     await b.stop()
 
