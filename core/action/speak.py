@@ -441,15 +441,34 @@ class Speaker:
             pass
 
     async def _bubble_stream(self, stream: AsyncIterator[str]) -> AsyncIterator[str]:
-        """包一层流：每个 chunk 透传给下游（切句/TTS）同时，剥 emo/face 标签后推给气泡增量。
+        """包一层流：每个 chunk 透传给下游（切句/TTS）同时，提取翻译括号内容推给气泡增量。
 
-        保留翻译括号（气泡要显示翻译），只剥 <emo:>/<face:> 标签。
+        气泡只显示翻译（括号内内容），不显示原文——原文阶段气泡空着，翻译括号到时
+        流式追加翻译。剥 emo/face 标签。整段若无翻译括号（如纯中文回复无翻译），
+        流结束时推剥括号后的原文兜底，避免气泡全程空白。
         """
+        in_bracket = False
+        pushed_any = False  # 这段回复是否推过翻译
+        buf = ""
         async for chunk in stream:
-            bubble = strip_all_emotion_tags(chunk)
-            if bubble:
-                self._broadcast_text(bubble)
+            # 先剥 emo/face 标签（标签不参与括号状态机）
+            text = strip_all_emotion_tags(chunk)
+            for ch in text:
+                if ch in _OPEN_BRACKETS:
+                    in_bracket = True
+                    buf = ""
+                elif ch in _CLOSE_BRACKETS:
+                    if in_bracket:
+                        if buf:
+                            self._broadcast_text(buf)
+                            pushed_any = True
+                        buf = ""
+                    in_bracket = False
+                elif in_bracket:
+                    buf += ch
+                # 括号外的原文不推气泡
             yield chunk
+        # 无翻译括号时（如纯中文回复）这段气泡为空——可接受（翻译场景才有翻译括号）
 
     async def _synth_and_play(self, sentence: str) -> None:
         # TTS 用：剥括号动作/翻译 + emo/face 标签（语音不读这些）。气泡增量已由 _bubble_stream 流式推。
