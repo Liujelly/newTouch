@@ -118,9 +118,9 @@ def _emotion_instruction(voice_emotions: list[str] | None) -> str:
     opts = " / ".join(voice_emotions)
     return (
         f"【语气标签】你的语音能表达这些情绪：{opts}。\n"
-        f"每次回复**必须**以 `<emo:情绪>` 开头（从上面选一个最贴合当下心情的），"
-        f"例如 `<emo:happy>`。这个标签只用来控制说话语气，不会被读出来、也不显示给用户，"
-        f"所以放心标。\n"
+        f"**每次回复的第一件事就是输出 `<emo:情绪>` 标签**——必须是回复最开头的第一个字符，"
+        f"不能先说别的话再补标签。从上面选一个最贴合当下心情的，例如 `<emo:happy>`。"
+        f"漏标或标在非开头位置是严重错误。标签只控制说话语气，不会被读出来也不显示，放心标。\n"
         f"注意：用户的话里有时会带 `<|愉快|>`、`<|HAPPY|>` 这类语音识别附带的情绪标记，"
         f"那是给你参考用户情绪的，你**不要**模仿这种写法，你只用开头的 `<emo:…>`。"
     )
@@ -138,9 +138,10 @@ def _face_instruction(face_emotions: list[str] | None) -> str:
     opts = " / ".join(face_emotions)
     return (
         f"【立绘表情标签】你能展现这些立绘表情：{opts}。\n"
-        f"每次回复**必须**在开头用 `<face:表情>` 标注本次的立绘表情（从上面选一个最贴合的），"
-        f"例如 `<face:得意>`。它独立于 `<emo:…>`（语气），只决定画面上你的神态，"
-        f"不会被读出来也不显示给用户。两个标签都放开头，顺序随意，如 `<emo:happy><face:得意>`。"
+        f"**每次回复必须在最开头输出 `<face:表情>` 标签**（和 `<emo:>` 一起放最开头，"
+        f"顺序随意如 `<emo:happy><face:得意>`），不能漏、不能放非开头位置。"
+        f"从上面选一个最贴合的，例如 `<face:得意>`。它独立于 `<emo:…>`（语气），"
+        f"只决定画面上你的神态，不会被读出来也不显示给用户。"
     )
 
 
@@ -240,9 +241,13 @@ def _proactive_lang_rules(reply_lang: str, translation_lang: str, thought_lang: 
     elif trans and trans != rl:
         trans_name = _LANG_NAMES.get(trans, trans)
         lines.append(
-            f"3. 你决定开口要说的话：用{reply_name}，**每一句**后面紧跟{trans_name}翻译，"
-            f"全角括号包裹，格式：{reply_name}原文（{trans_name}翻译）。"
-            f"哪怕只说一句也要附翻译，不能漏。"
+            f"3. 你决定开口要说的话（text 字段 / [决定：开口] 后引号内）：\n"
+            f"   - 用{reply_name}说，**每一句**后面紧跟{trans_name}翻译，全角括号（）包裹，"
+            f"格式：{reply_name}原文（{trans_name}翻译）。\n"
+            f"   - **每句话都必须带翻译，绝对不能漏**——哪怕只说一句也要附翻译。"
+            f"漏翻译是严重错误。\n"
+            f"   - 不要照搬/复述历史里出现过的回复，每次重新生成并带翻译。\n"
+            f"   - 示例：おかえり！（欢迎回家！）今日もお疲れさま。（今天也辛苦啦。）"
         )
     else:
         lines.append(f"3. 你决定开口要说的话：用{reply_name}。")
@@ -429,7 +434,7 @@ def _build_proactive_json_instruction(
                  if emo_opts else "")
     # 立绘表情字段：与 emotion（语气）独立，决定画面神态。空立绘库时不要求。
     face_opts = " / ".join(face_emotions) if face_emotions else ""
-    face_field = (f', "face": "从 [{face_opts}] 选一个最贴合此刻神态的立绘表情"'
+    face_field = (f', "face": "必填，从 [{face_opts}] 选一个最贴合此刻神态的立绘表情"'
                   if face_opts else "")
     # 情绪状态增量：这次内心活动让你内在情绪如何变化（喂给 apply_delta，影响主动行为/记忆）。
     # 区别于上面的 emotion（那是说话语气/TTS），这里是心理状态五维的细微增量。
@@ -524,7 +529,8 @@ def _build_proactive_cot_instruction(
     face_opts = " / ".join(face_emotions) if face_emotions else ""
     face_block = (
         f"\n\n你在画面上的立绘表情用 `[face:表情]` 标注（从 [{face_opts}] 选一个最贴合此刻神态的），"
-        f"与说话语气独立。**speak 时**把 `[face:表情]` 放在决策标记同一行末尾，"
+        f"与说话语气独立。**每次独白都必须带 `[face:表情]`，不能漏**。"
+        f"**speak 时**把 `[face:表情]` 放在决策标记同一行末尾，"
         f"如 `[决定：开口] \"要说的话\" [face:得意]`；silent 时也标，"
         f"如 `[决定：沉默] [face:思考]`。"
         if face_opts else ""
