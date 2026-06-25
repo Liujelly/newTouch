@@ -435,7 +435,8 @@ class Orchestrator:
             yield reply
 
         await self._speaker.speak(_once(), emotion=result.get("emotion") or None,
-                                 face=result.get("face") or None)
+                                 face=result.get("face") or None,
+                                 translation_lang=translation_lang)
 
         delta = result.get("emotion_delta") or {}
         if delta:
@@ -562,7 +563,8 @@ class Orchestrator:
                 earlier_summary=self._earlier_summary,
                 time_context=time_context,
             )
-            reply = await self._speaker.speak(stream, on_text=_on_reply_text)
+            reply = await self._speaker.speak(stream, on_text=_on_reply_text,
+                                              translation_lang=translation_lang)
         self._state.on_interaction(positive=True)
         self._awaiting_reply = False  # 用户回应了，清除等待标记
         self._state.save(self._state_path)
@@ -766,7 +768,8 @@ class Orchestrator:
         # 主动发言文本已知，先落盘（语音播放期间管理平台即可见），再播放
         self._log_chat("assistant", reply)
         await self._speaker.speak(_once(), emotion=result.get("emotion") or None,
-                                 face=result.get("face") or None)
+                                 face=result.get("face") or None,
+                                 translation_lang=translation_lang)
         self._gate.record_spoke()
         # 独白自带的情绪增量（这次内心活动让 ta 情绪如何变化）→ 直接 apply，零额外调用
         delta = result.get("emotion_delta") or {}
