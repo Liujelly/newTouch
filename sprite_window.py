@@ -117,7 +117,6 @@ class SpriteWindow(QWidget):
         # 台词气泡：立绘头顶上方，圆角白底黑字，超时自动消失
         self._bubble = QLabel(self)
         self._bubble.setWordWrap(True)
-        self._bubble.setMaximumWidth(300)
         self._bubble.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._bubble.setStyleSheet(
             "QLabel { background: rgba(255,255,255,235); color: #1e293b;"
@@ -143,7 +142,7 @@ class SpriteWindow(QWidget):
         # 布局：上方气泡区 + 下方立绘区。立绘按固定高度缩放，气泡在上方独立区不挡脸。
         self._portrait_h = 480  # 立绘固定高度
         self._bubble_area_h = 140  # 气泡区预留高度
-        self._bubble_width = 300  # 气泡最大宽度
+        self._bubble_width = 460  # 气泡最大宽度（宽一点少换行，避免纵向细长）
         self._bubble_active = False  # 当前是否在一段回复流式期间
         self._cur_face_label = "neutral"  # 当前显示的表情名（供 text_end 判断要不要恢复）
 
