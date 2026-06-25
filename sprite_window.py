@@ -27,7 +27,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from PyQt6.QtCore import Qt, pyqtSignal, QObject, QTimer
 from PyQt6.QtGui import QPixmap
-from PyQt6.QtWidgets import QApplication, QLabel, QWidget
+from PyQt6.QtWidgets import QApplication, QLabel, QWidget, QLineEdit
 
 from core.config import load_config
 from core.sprite.store import load_sprites, image_path
@@ -45,6 +45,23 @@ class FaceReceiver(QObject):
         self._host = host
         self._port = port
         self._stop = threading.Event()
+        self._sock = None  # 当前连接的 socket（send_chat 用）
+        self._lock = threading.Lock()
+
+    def send_chat(self, text: str) -> bool:
+        """往主程序发一条聊天消息 {"chat":"..."}。返回是否成功。"""
+        if not text:
+            return False
+        line = json.dumps({"chat": text}, ensure_ascii=False) + "\n"
+        with self._lock:
+            sock = self._sock
+            if sock is None:
+                return False
+            try:
+                sock.sendall(line.encode("utf-8"))
+                return True
+            except OSError:
+                return False
 
     def run(self) -> None:
         buf = ""
@@ -53,6 +70,8 @@ class FaceReceiver(QObject):
             try:
                 sock = socket.create_connection((self._host, self._port), timeout=3)
                 sock.settimeout(1.0)  # 便于周期检查 _stop
+                with self._lock:
+                    self._sock = sock
                 buf = ""
                 while not self._stop.is_set():
                     try:
@@ -82,6 +101,8 @@ class FaceReceiver(QObject):
             except (OSError, ConnectionError):
                 pass
             finally:
+                with self._lock:
+                    self._sock = None
                 if sock is not None:
                     try:
                         sock.close()
@@ -145,6 +166,18 @@ class SpriteWindow(QWidget):
         self._bubble_width = 460  # 气泡最大宽度（宽一点少换行，避免纵向细长）
         self._bubble_active = False  # 当前是否在一段回复流式期间
         self._cur_face_label = "neutral"  # 当前显示的表情名（供 text_end 判断要不要恢复）
+        self._receiver = None  # FaceReceiver，set_receiver 注入（输入框发送用）
+
+        # 右键弹出的聊天输入框：回车发送、失焦消失
+        self._input = QLineEdit(self)
+        self._input.setPlaceholderText("输入消息，回车发送…")
+        self._input.setStyleSheet(
+            "QLineEdit { background: rgba(255,255,255,235); color: #1e293b;"
+            "border-radius: 8px; padding: 6px 10px; font-size: 14px; }"
+        )
+        self._input.hide()
+        self._input.returnPressed.connect(self._send_input)
+        self._input.installEventFilter(self)  # 失焦消失
 
         # 窗口初始尺寸 = 气泡区 + 立绘区（无气泡时气泡区也预留，避免布局跳动）
         self.resize(self._bubble_width, self._bubble_area_h + self._portrait_h)
@@ -173,6 +206,42 @@ class SpriteWindow(QWidget):
         """松开结束拖动。"""
         self._drag_offset = None
         event.accept()
+
+    def set_receiver(self, receiver) -> None:
+        """注入 FaceReceiver（输入框发送消息用）。"""
+        self._receiver = receiver
+
+    def contextMenuEvent(self, event) -> None:
+        """右键浮窗 → 弹出聊天输入框。"""
+        self._show_input(event.pos())
+
+    def _show_input(self, pos) -> None:
+        """在 pos 处显示输入框并聚焦。"""
+        w = min(self._bubble_width, self.width() - 8)
+        self._input.resize(w, 32)
+        self._input.move(max(0, (self.width() - w) // 2), 4)
+        self._input.clear()
+        self._input.raise_()
+        self._input.show()
+        self._input.setFocus()
+
+    def _send_input(self) -> None:
+        """回车发送输入框内容给主程序，然后隐藏。"""
+        text = self._input.text().strip()
+        self._input.hide()
+        if not text or self._receiver is None:
+            return
+        if not self._receiver.send_chat(text):
+            # 发送失败（未连接）——可加提示，此处静默
+            pass
+
+    def eventFilter(self, obj, event) -> bool:
+        """输入框失焦（点别处）时消失。"""
+        from PyQt6.QtCore import QEvent
+        if obj is self._input and event.type() == QEvent.Type.FocusOut:
+            self._input.hide()
+            return True
+        return super().eventFilter(obj, event)
 
     def show_face(self, face: str) -> None:
         """Qt 信号槽：收到 face 换图（主线程执行）。
@@ -278,6 +347,7 @@ def main() -> None:
     receiver.face_received.connect(window.show_face)
     receiver.text_received.connect(window.show_text)
     receiver.text_end_received.connect(window.show_text_end)
+    window.set_receiver(receiver)
     t = threading.Thread(target=receiver.run, daemon=True)
     t.start()
 

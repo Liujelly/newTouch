@@ -156,6 +156,20 @@ async def _broadcaster_scenario():
     await b.push_text_end("小触")  # 不应抛异常
     print("✅ 无 client 时 push/push_text/push_text_end 不崩")
 
+    # 反向：client 发 chat → on_chat 回调触发
+    received = []
+    async def _on_chat(text):
+        received.append(text)
+    b.set_on_chat(_on_chat)
+    sock2 = socket.create_connection(("127.0.0.1", port), timeout=3)
+    await asyncio.sleep(0.3)
+    sock2.sendall((json.dumps({"chat": "你好呀"}) + "\n").encode("utf-8"))
+    await asyncio.sleep(0.3)
+    assert received == ["你好呀"], f"on_chat 应收到消息: {received}"
+    print(f"✅ 反向 chat 通道正确: {received}")
+    sock2.close()
+    await asyncio.sleep(0.2)
+
     await b.stop()
 
 

@@ -28,6 +28,11 @@ class FaceBroadcaster:
         self._clients: set[asyncio.StreamWriter] = set()
         self._server: asyncio.AbstractServer | None = None
         self._started = False
+        self._on_chat = None  # 浮窗发来聊天消息的回调（main.py 注入 enqueue）
+
+    def set_on_chat(self, callback) -> None:
+        """注入聊天回调：浮窗发来 {"chat":"..."} 时调用 callback(text)。"""
+        self._on_chat = callback
 
     async def start(self) -> None:
         """启动 TCP server。失败静默降级（浮窗功能可选）。"""
@@ -47,17 +52,38 @@ class FaceBroadcaster:
     async def _handle_client(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
-        """每个浮窗 client 连接：加入列表，保持连接直到断开。"""
+        """每个浮窗 client 连接：加入推送列表，同时读 client 发来的聊天消息。"""
         self._clients.add(writer)
         peer = writer.get_extra_info("peername")
         log.info("浮窗已连接: %s", peer)
+        buf = ""
         try:
-            # 不读 client 数据（单向推送），但保持连接存活：读到 EOF 说明 client 断开
             while not reader.at_eof():
                 try:
-                    await reader.read(1024)
+                    data = await reader.read(1024)
                 except (ConnectionError, OSError):
                     break
+                if not data:
+                    break
+                # 解析 client 发来的行 JSON（浮窗聊天输入）
+                buf += data.decode("utf-8", errors="replace")
+                while "\n" in buf:
+                    line, buf = buf.split("\n", 1)
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        import json
+                        obj = json.loads(line)
+                        if obj.get("chat") and self._on_chat:
+                            text = str(obj["chat"]).strip()
+                            if text:
+                                try:
+                                    await self._on_chat(text)
+                                except Exception as e:  # noqa: BLE001
+                                    log.warning("on_chat 回调失败: %s", e)
+                    except (json.JSONDecodeError, ValueError):
+                        pass
         except (ConnectionError, OSError):
             pass
         finally:

@@ -97,6 +97,16 @@ async def main() -> None:
         broadcaster = FaceBroadcaster(sprite_host, sprite_port)
         asyncio.create_task(broadcaster.start())
         speaker.set_emotion_broadcaster(broadcaster)
+
+        # 浮窗右键输入框发来的聊天消息 → 投入 orchestrator 队列（等同文本输入）
+        from core.events import Event, EventType, EventPriority
+        async def _on_sprite_chat(text: str) -> None:
+            await orch.enqueue(Event(
+                priority=EventPriority.URGENT,
+                type=EventType.USER_SPEECH,
+                payload={"text": text},
+            ))
+        broadcaster.set_on_chat(_on_sprite_chat)
         # 拉起独立浮窗进程（detached；主程序退出时 terminate）
         import subprocess
         sprite_proc = subprocess.Popen(
