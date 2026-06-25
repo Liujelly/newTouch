@@ -34,11 +34,11 @@ _DANGLING_CLOSE = re.compile(r"^[^（(]*[）)]")
 # 回复开头的情绪标签，如 <emo:happy>。只控制 TTS 语气，不朗读、不入聊天记录。
 # [\w] 含 Unicode，兼容中文情绪名（如立绘 face 库 key 可能是中文）。
 _EMO_PREFIX = re.compile(r"^\s*<\s*emo\s*:\s*([\w]+)\s*>", re.IGNORECASE)
-# 文本中任意位置的情绪标签（用于清理 LLM 可能在末尾/中间误输出的标签）
-_EMO_TAG_ANYWHERE = re.compile(r"<\s*emo\s*:\s*[\w]+\s*>", re.IGNORECASE)
+# 文本中任意位置的情绪标签（用于清理 LLM 可能在末尾/中间误输出的标签；带捕获组供扫描取值）
+_EMO_TAG_ANYWHERE = re.compile(r"<\s*emo\s*:\s*([\w]+)\s*>", re.IGNORECASE)
 # 立绘表情标签 <face:得意>，独立于 <emo:>（语音语气）。驱动立绘差分切换。
 _FACE_PREFIX = re.compile(r"^\s*<\s*face\s*:\s*([\w]+)\s*>", re.IGNORECASE)
-_FACE_TAG_ANYWHERE = re.compile(r"<\s*face\s*:\s*[\w]+\s*>", re.IGNORECASE)
+_FACE_TAG_ANYWHERE = re.compile(r"<\s*face\s*:\s*([\w]+)\s*>", re.IGNORECASE)
 
 
 def parse_emotion_prefix(text: str) -> tuple[str | None, str]:
@@ -293,10 +293,7 @@ class Speaker:
                 if printed_header:
                     print()
                 _fire()
-                # 无 face 时广播 neutral 让浮窗回默认图（与 TTS 路径一致）
-                if self._cur_face is None:
-                    self._cur_face = "neutral"
-                    self._broadcast_face()
+                self._finalize_face(full)  # 无 face 时从全文扫补广播，仍无则 neutral
                 return strip_all_emotion_tags("".join(full))
 
             # TTS：producer 读流入队 + 攒全文，consumer 后台播放
@@ -325,11 +322,7 @@ class Speaker:
             await asyncio.gather(_producer(), _consumer())
         finally:
             _fire()  # 兜底：异常路径也确保回调触发一次
-            # 反应路径若整段没解析到 face 标签，广播 neutral 让浮窗回默认图
-            # （主动路径已显式传 face 并广播过；此处只补 None 的情况）
-            if self._cur_face is None:
-                self._cur_face = "neutral"
-                self._broadcast_face()
+            self._finalize_face(full)  # 无 face 时从全文扫补广播，仍无则 neutral
             self._speaking = False
         # 最终清理：移除全文中所有残留的 <emo:xxx>/<face:xxx> 标签（LLM 可能在末尾/中间误输出）
         return strip_all_emotion_tags("".join(full))
@@ -369,7 +362,6 @@ class Speaker:
         处理两标签顺序不定 + 之间可能有空白的情况。非标签开头时原样返回。
         """
         rest = text
-        changed = True
         # 最多剥 4 个标签防异常死循环（正常 2 个：emo + face）
         for _ in range(4):
             rest = rest.lstrip()
@@ -378,14 +370,12 @@ class Speaker:
                 if self._cur_emotion is None:
                     self._cur_emotion = emo
                 rest = after_emo
-                changed = True
                 continue
             face, after_face = parse_face_prefix(rest)
             if face is not None:
                 self._cur_face = face
                 self._broadcast_face()
                 rest = after_face
-                changed = True
                 continue
             break
         return rest
@@ -403,8 +393,21 @@ class Speaker:
             # 无事件循环时静默（如测试环境）
             pass
 
+    def _finalize_face(self, full: list[str]) -> None:
+        """反应路径收尾：若开头没解析到 face（可能跨 chunk 落在后续），从全文扫一次补广播。
+
+        主动路径已显式传 face（_cur_face 非 None），此处跳过。整段无 face 标签则 neutral 兜底。
+        """
+        if self._cur_face is not None:
+            return
+        m = _FACE_TAG_ANYWHERE.search("".join(full))
+        self._cur_face = m.group(1) if m else "neutral"
+        self._broadcast_face()
+
     async def _synth_and_play(self, sentence: str) -> None:
         sentence = _strip_actions(sentence)
+        # 清理任意位置的 <emo:>/<face:> 标签（防跨 chunk 的第二标签漏剥后进 TTS 被朗读）
+        sentence = strip_all_emotion_tags(sentence)
         if not sentence:
             return
         try:

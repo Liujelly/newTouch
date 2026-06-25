@@ -7,6 +7,7 @@
 4. _parse_monologue(_cot) 解析 face 字段
 """
 import asyncio
+import asyncio
 import json
 import socket
 import sys
@@ -19,7 +20,9 @@ sys.stdout.reconfigure(encoding="utf-8")
 from core.config import Config
 from core.sprite.store import load_sprites, image_path, load_face_emotions
 from core.sprite.broadcaster import FaceBroadcaster
-from core.action.speak import parse_face_prefix, parse_emotion_prefix, strip_all_emotion_tags
+from core.action.speak import (
+    Speaker, parse_face_prefix, parse_emotion_prefix, strip_all_emotion_tags,
+)
 from core.cognition import _parse_monologue, _parse_monologue_cot
 
 
@@ -160,6 +163,33 @@ def test_face_tag_parse():
     print("✅ strip_all_emotion_tags 清理 emo+face 正确")
 
 
+async def _stream_chunks(chunks):
+    for c in chunks:
+        yield c
+        await asyncio.sleep(0.001)
+
+
+def test_cross_chunk_face_recovery():
+    """回归：emo 和 face 标签跨 chunk 分开发时，face 仍能被补广播、不进文本。
+
+    场景：LLM 流式把 <emo:happy> 和 <face:得意> 分两个 chunk 发。
+    开头解析只拿到 emo，face 落在后续 chunk；收尾从全文扫一次补广播。
+    """
+    async def run():
+        cfg = Config({"modules": {"tts": {"enabled": False}}})
+        sp = Speaker(cfg, "T")
+        out = await sp.speak(
+            _stream_chunks(["<emo:happy>", "<face:得意>", "嘿嘿，我在呀~"]),
+            on_text=lambda t: None,
+        )
+        await asyncio.sleep(0.05)  # 等 create_task 的广播跑完
+        assert sp._cur_emotion == "happy", f"emo 应解析: {sp._cur_emotion}"
+        assert sp._cur_face == "得意", f"face 应被补广播: {sp._cur_face}"
+        assert "face" not in out and "emo" not in out, f"标签不应进文本: {out!r}"
+    asyncio.run(run())
+    print("✅ 跨 chunk face 补广播、标签不进文本")
+
+
 def test_parse_monologue_face():
     """JSON 独白解析 face 字段。"""
     raw = '{"thought":"想他了","action":"speak","text":"在吗","emotion":"happy","face":"得意"}'
@@ -206,6 +236,7 @@ if __name__ == "__main__":
     test_store_empty()
     test_broadcaster()
     test_face_tag_parse()
+    test_cross_chunk_face_recovery()
     test_parse_monologue_face()
     test_parse_monologue_cot_face()
     print("\n=== 全部测试通过 ===")
