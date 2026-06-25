@@ -390,7 +390,7 @@ def build_proactive_prompt(
     # 语言规则改由下方 monologue 里的 _proactive_lang_rules 按字段精确控制。
     system_prompt = _build_system(card, user_name, preset=preset, reply_lang=reply_lang,
                                   translation_lang=translation_lang, lang_instruction=False,
-                                  face_emotions=face_emotions)
+                                  voice_emotions=voice_emotions, face_emotions=face_emotions)
 
     lang_rules = _proactive_lang_rules(reply_lang, translation_lang, thought_lang)
 
@@ -399,7 +399,7 @@ def build_proactive_prompt(
         monologue = _build_proactive_cot_instruction(
             trigger_reason, emotion_summary, chat_history, elapsed_desc, memories,
             earlier_summary, time_context, think_seed, recent_inner, can_look, lang_rules,
-            face_emotions
+            face_emotions, voice_emotions
         )
     else:
         # JSON 模式：原有逻辑（完全不变）
@@ -500,6 +500,7 @@ def _build_proactive_cot_instruction(
     memories: list[str] | None, earlier_summary: str, time_context: str, think_seed: str,
     recent_inner: list[str] | None, can_look: bool, lang_rules: str = "",
     face_emotions: list[str] | None = None,
+    voice_emotions: list[str] | None = None,
 ) -> str:
     """构建思维链（CoT）格式的内心独白指令。
 
@@ -507,6 +508,7 @@ def _build_proactive_cot_instruction(
         lang_rules: 按字段的语言规则（思考/决策标记/要说的话各自语言），由
             _proactive_lang_rules 生成，拼在指令末尾。
         face_emotions: 立绘库可用表情档（库驱动），非空时要求决策行附 [face:表情]。
+        voice_emotions: 语音库可用语气档（库驱动），非空时要求 speak 时话里带 <emo:语气>。
     """
     # 可联想的素材：长期记忆 + 早先聊天摘要
     material = []
@@ -535,6 +537,15 @@ def _build_proactive_cot_instruction(
         f"如 `[决定：沉默] [face:思考]`。"
         if face_opts else ""
     )
+    # 语音语气标签说明（库驱动，空语音库则不要求）
+    emo_opts = " / ".join(voice_emotions) if voice_emotions else ""
+    emo_block = (
+        f"\n\n你说话的语气用 `<emo:语气>` 标注（从 [{emo_opts}] 选一个最贴合的），"
+        f"决定参考音色，与立绘表情独立。**speak 时必须带 `<emo:语气>`，不能漏**，"
+        f"放在要说的话开头，如 `[决定：开口] <emo:happy>\"要说的话\" [face:得意]`。"
+        f"silent 时不用带 emo。"
+        if emo_opts else ""
+    )
 
     monologue = (
         f"[系统提示·内心独白]\n"
@@ -561,6 +572,7 @@ def _build_proactive_cot_instruction(
         f"**重要**：决策标记之前**必须**先写出至少一两句真实、具体的思考过程，"
         f"不能一上来就直接给决策标记（那样意识流里就只剩一个空决定，没有任何内心活动）。\n\n"
         + (f"{face_block.lstrip()}\n\n" if face_block else "")
+        + (f"{emo_block.lstrip()}\n\n" if emo_block else "")
         + f"思考完毕后，另起一行，用以下格式之一表达你的决定：\n"
         + (
             f"[决定：开口] \"要说的话\"\n"
