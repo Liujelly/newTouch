@@ -20,7 +20,7 @@ from .events import Event, EventType
 from .gatekeeper import GateKeeper
 from .state import EmotionState
 from .memory.store import MemoryStore
-from .action.speak import Speaker, load_voice_emotions, apply_voice_model
+from .action.speak import Speaker, load_voice_emotions, apply_voice_model, strip_leading_time_marker
 from .sprite.store import load_face_emotions
 from .logger import get_logger
 
@@ -420,6 +420,8 @@ class Orchestrator:
 
         thought = result.get("thought", "")
         reply = result.get("text", "")
+        # 兜底扒掉开头被复读的系统时间标记 [X分钟前]（LLM 照抄历史标记进独白 text）
+        reply = strip_leading_time_marker(reply)
 
         if result.get("action") != "speak" or not reply:
             self._log.record(trigger="视觉·显著变化", action="silent", thought=thought,
@@ -745,6 +747,8 @@ class Orchestrator:
                 result = {"action": "silent", "thought": thought, "text": ""}
 
         reply = result.get("text", "")
+        # 兜底扒掉开头被复读的系统时间标记 [X分钟前]（LLM 照抄历史标记进独白 text）
+        reply = strip_leading_time_marker(reply)
 
         if result.get("action") != "speak" or not reply:
             self._log.record(trigger="心跳", action="silent", thought=thought,

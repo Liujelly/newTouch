@@ -71,6 +71,44 @@ def strip_all_emotion_tags(text: str) -> str:
     return text
 
 
+# 被复读的系统时间标记：[X分钟前] / [X小时前] / [X天前] / [刚刚]（character.py 注入历史的格式）。
+# LLM 常照抄这个格式到回复开头，用此正则在收口处扒掉。仅扒开头，正文里 legitimate 的方括号不动。
+_TIME_MARKER_RE = re.compile(r"^\s*\[(?:\d+(?:分钟|小时|天)前|刚刚)\]\s*")
+
+
+def strip_leading_time_marker(text: str) -> str:
+    """扒掉开头被 LLM 复读的系统时间标记（[X分钟前]/[X小时前]/[X天前]/[刚刚]）。
+
+    兜底机制：character.py 仍逐条给历史标 [X分钟前] 让 AI 感知时间间隔，但 LLM
+    会照抄进自己回复开头。prompt 禁令不可靠，故在此硬扒。可连续扒多个（兼容
+    前面 emo/face 标签被剥后露出时间标记、或 LLM 连写两个的极端情况）。
+    仅扒开头；正文中间的方括号不碰。
+    """
+    while True:
+        m = _TIME_MARKER_RE.match(text)
+        if not m:
+            return text
+        text = text[m.end():]
+
+
+def _looks_like_partial_time_marker(stripped: str) -> bool:
+    """判断缓冲文本是否像未闭合的时间标记前缀（流式跨 chunk 缓冲）。
+
+    如 '[12分'、'[3小时'、'[刚'——以 [ 开头、未闭合 ]、短、内容像数字+单位前/刚。
+    单独一个 '[' 也算（待定，等更多字符判断），避免逐字符流第一个字符就误放行。
+    用于 _strip_emotion_stream 决定是否等更多 chunk 再放行，避免把跨 chunk 的
+    '[12分钟' + '前] うん' 中的前半误放行。
+    正文以 [ 开头的回复（如 '[备注]…'）会缓冲到闭合，正则不匹配再放行，安全。
+    """
+    if not stripped.startswith("[") or "]" in stripped:
+        return False
+    if len(stripped) >= 16:  # 时间标记很短，超长说明不是
+        return False
+    inner = stripped[1:]
+    # inner 空（仅 '['）也待定；非空则 [ 后只允许 数字 / 分钟小时天 / 刚 前 / 空白
+    return inner == "" or all(c in "0123456789分钟小时天前刚 " for c in inner)
+
+
 def _looks_like_partial_tag(stripped: str) -> bool:
     """判断缓冲文本是否像未闭合的 <emo:…> 或 <face:…> 前缀（流式跨 chunk 缓冲）。
 
@@ -363,6 +401,9 @@ class Speaker:
                 if "<" in stripped and ">" not in stripped and len(buf) < 40:
                     if _looks_like_partial_tag(stripped):
                         break  # 等更多 chunk 闭合标签
+                # 或未闭合的时间标记前缀（如跨 chunk 的 '[12分' + '钟前] ...'）
+                if _looks_like_partial_time_marker(stripped):
+                    break
                 # 开头是正文（非标签）→ 放行，后续直接 yield
                 if buf:
                     yield buf
@@ -376,13 +417,14 @@ class Speaker:
                 yield rest
 
     def _consume_prefix_tags(self, text: str) -> str:
-        """循环剥离开头的 <emo:> 和 <face:> 标签，设对应 _cur_*，返回剩余文本。
+        """循环剥离开头的 <emo:> / <face:> 标签和被复读的 [X分钟前] 时间标记。
 
-        处理两标签顺序不定 + 之间可能有空白的情况。非标签开头时原样返回。
+        处理三者在开头顺序不定 + 之间可能有空白的情况。非标签/标记开头时原样返回。
+        时间标记是 LLM 照抄系统历史标记的兜底扒除（见 strip_leading_time_marker）。
         """
         rest = text
-        # 最多剥 4 个标签防异常死循环（正常 2 个：emo + face）
-        for _ in range(4):
+        # 最多剥 6 个前缀防异常死循环（正常 emo+face+时间标记 ≤ 3 个）
+        for _ in range(6):
             rest = rest.lstrip()
             emo, after_emo = parse_emotion_prefix(rest)
             if emo is not None:
@@ -395,6 +437,10 @@ class Speaker:
                 self._cur_face = face
                 self._broadcast_face()
                 rest = after_face
+                continue
+            m = _TIME_MARKER_RE.match(rest)
+            if m:
+                rest = rest[m.end():]
                 continue
             break
         return rest
