@@ -280,6 +280,8 @@ class Cognition:
             ]
 
         oai_messages = [{"role": "system", "content": system_prompt}] + list(messages)
+        if tools_openai:
+            log.info("[LLM] 本次提供给 LLM 的工具: %s", [t["function"]["name"] for t in tools_openai])
         max_rounds = 5  # 防死循环
         for _ in range(max_rounds):
             kwargs = dict(

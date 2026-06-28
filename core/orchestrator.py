@@ -346,6 +346,7 @@ class Orchestrator:
         self._last_vision = caption
         # 标记「自动抓取」：被动帧差抓的画面，可能已过时；LLM 要看"现在"应调 look 工具
         self._chat_history.append({"role": "user", "content": f"（系统自动抓取到画面：{caption}。注意：这是被动抓取，可能已过时；要看此刻画面请调 look 工具）", "ts": datetime.now().isoformat(timespec="seconds")})
+        log.info("[视觉] 被动 caption 注入历史（带标记，提示调 look）: %s", caption[:60])
         await self._compact_history()
         self._log.record(trigger="视觉", action="silent",
                          text=caption, emotion=self._state.snapshot(), gate="画面变化已记录")
