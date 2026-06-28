@@ -286,6 +286,17 @@ def get_config_schema() -> list:
             {"k": "tool_enabled", "label": "memory_search 工具", "type": "toggle", "restart": True,
              "help": "注册 memory_search 工具给 LLM 自主调用（觉得自动注入不够时可再查）。与上面独立，可叠加/互替。改后需重启"},
         ]},
+        {"section": "联网搜索", "key": "web_search", "fields": [
+            {"k": "enabled", "label": "启用 web_search 工具", "type": "toggle", "restart": True,
+             "help": "注册 web_search 工具给 LLM 查实时信息（近期新闻/事件/最新版本/实时数据）时自主调用。默认关，改后需重启"},
+            {"k": "provider", "label": "搜索引擎", "type": "select",
+             "options": ["duckduckgo", "tavily"], "restart": True,
+             "help": "duckduckgo 免费无需 key；tavily 结果更干净需配下方 api_key（没配自动降级 duckduckgo）"},
+            {"k": "max_results", "label": "返回条数", "type": "number", "min": 1, "max": 10, "step": 1, "restart": True,
+             "help": "每次搜索返回的结果数（1~10），默认 3"},
+            {"k": "api_key", "label": "Tavily Key", "type": "password", "restart": True,
+             "help": "仅 tavily 用，duckduckgo 留空即可"},
+        ]},
         {"section": "角色 / 预设（切换即时生效）", "key": "character", "fields": [
             {"k": "name", "label": "当前角色", "type": "char_select"},
             {"k": "preset_enabled", "label": "启用预设", "type": "preset_toggle"},

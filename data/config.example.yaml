@@ -117,6 +117,14 @@ memory:
   reflect_time: 00:05
   api_key: YOUR_ARK_KEY
   embed_api_key: YOUR_ARK_KEY
+# 联网搜索工具 web_search（LLM 查实时信息自主调用）。enabled 默认 false，改后需重启
+web_search:
+  enabled: false
+  # duckduckgo（默认，免费无需 key）/ tavily（结果更干净，需配 api_key）
+  provider: duckduckgo
+  max_results: 3
+  # tavily 专用 key；duckduckgo 无需，留空
+  api_key: ""
 worldinfo:
   budget_chars: 2000
 global_worldbooks: []

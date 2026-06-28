@@ -88,6 +88,10 @@ async def main() -> None:
     from core.tools.memory_tools import register_memory_tools
     register_memory_tools(orch._memory, cfg)
 
+    # 注册联网搜索工具 web_search（LLM 查实时信息自主调用，开关 web_search.enabled）
+    from core.tools.web_search import register_web_search_tools
+    register_web_search_tools(cfg)
+
     # 立绘浮窗：起 face 广播 TCP server，把立绘表情推给独立浮窗进程（开关 sprite.enabled）
     sprite_proc = None
     if cfg.get("sprite.enabled", False):
