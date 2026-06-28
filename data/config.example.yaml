@@ -130,6 +130,7 @@ tools:
   get_weather: true            # 查询天气（wttr.in 免费无 key）
   memory_search: true         # 检索关于用户的长久记忆（需 memory.enabled=true）
   web_search: false           # 联网搜索实时信息（默认关，开了才注册）
+  look: true                  # 看一眼摄像头画面（需 perception.vision.enabled=true）
   set_speaking_frequency: true  # 调整主动说话频率（另受权限页授权）
   toggle_vision: true         # 开关视觉感知（另受权限页授权）
   switch_preset: true         # 切换预设配置（另受权限页授权）

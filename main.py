@@ -95,6 +95,10 @@ async def main() -> None:
     from core.tools.web_search import register_web_search_tools
     register_web_search_tools(cfg)
 
+    # 注册视觉查看工具 look（LLM 反应路径自主看一眼，开关 tools.look）
+    from core.tools.vision_tools import register_vision_tools
+    register_vision_tools(vision, cfg)
+
     # 立绘浮窗：起 face 广播 TCP server，把立绘表情推给独立浮窗进程（开关 sprite.enabled）
     sprite_proc = None
     if cfg.get("sprite.enabled", False):

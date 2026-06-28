@@ -18,6 +18,7 @@ TOOL_CATALOG: list[dict] = [
     {"name": "get_weather", "label": "查询天气", "default": True, "source": "外部查询"},
     {"name": "memory_search", "label": "检索长久记忆", "default": True, "source": "记忆"},
     {"name": "web_search", "label": "联网搜索实时信息", "default": False, "source": "联网搜索"},
+    {"name": "look", "label": "看一眼摄像头画面", "default": True, "source": "视觉"},
     {"name": "set_speaking_frequency", "label": "调整主动说话频率", "default": True, "source": "自我配置"},
     {"name": "toggle_vision", "label": "开关视觉感知", "default": True, "source": "自我配置"},
     {"name": "switch_preset", "label": "切换预设配置", "default": True, "source": "自我配置"},

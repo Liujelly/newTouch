@@ -26,10 +26,6 @@ from .logger import get_logger
 
 log = get_logger("orch")
 
-# 反应路径"主动看"关键词预筛（命中才做一次轻量意图判断，避免每句都调 LLM）
-_LOOK_KEYWORDS = ("看看", "看一", "看下", "看一下", "瞅", "瞧", "看见", "看到",
-                  "摄像头", "镜头", "看我", "看这", "拍", "录像", "画面")
-
 
 def _elapsed_desc(seconds: float) -> str:
     if seconds < 90:
@@ -459,55 +455,6 @@ class Orchestrator:
         self._record_inner("speak", thought, reply)
         await self._compact_history()
 
-    async def _maybe_look(self, user_text: str) -> None:
-        """反应路径主动看：用户话里像在要求"看"时，当场抓帧并把 caption 注入对话历史。
-
-        三道闸防滥用：①视觉未开/无 vision → 直接返回；②关键词预筛不中 → 不调 LLM；
-        ③命中关键词才做一次轻量意图判断（LLM 给 look/否），避免"看书""我看行"等误触发。
-        look_now() 自带 min_look_interval 节流。失败静默降级（不打断正常回复）。
-        """
-        can_look = (self._vision is not None
-                    and self._cfg.get("perception.vision.enabled", False))
-        if not can_look:
-            return
-        if not any(kw in user_text for kw in _LOOK_KEYWORDS):
-            return
-        # 轻量意图判断：复用主动独白，只取 action 是否为 look（text/thought 丢弃）
-        try:
-            preset = load_preset(self._cfg)
-            async with self._cognition_lock:
-                intent = await self._cognition.proactive_think(
-                    card=self._card, user_name=self._user_name,
-                    trigger_reason=f"{self._user_name}刚说:「{user_text}」——ta 是否在请求你用摄像头看一眼？"
-                                   f"是就 look，否则 silent。",
-                    emotion_summary=self._state.summary(),
-                    chat_history=self._chat_history[-4:],
-                    elapsed_desc="刚刚", can_look=True,
-                    preset=preset, reply_lang=self._cfg.get("modules.tts.text_lang", "zh"),
-                )
-        except Exception as e:  # noqa: BLE001
-            log.warning("反应路径看一眼·意图判断失败: %s", e)
-            return
-        if intent.get("action") != "look":
-            return
-        self._log.record(trigger="反应·主动看", action="look",
-                         thought=intent.get("thought", ""), emotion=self._state.snapshot())
-        try:
-            vc = await self._vision.look_now()
-        except Exception as e:  # noqa: BLE001
-            log.warning("look_now 失败: %s", e)
-            return
-        if not vc:
-            return
-        self._last_vision = vc.caption
-        # caption 注入对话历史，随后正常 react_stream 即可"看着"回复
-        self._chat_history.append({"role": "user", "content": f"（你看到了：{vc.caption}）", "ts": datetime.now().isoformat(timespec="seconds")})
-        if len(self._chat_history) > self._max_history:
-            self._chat_history = self._chat_history[-self._max_history:]
-        self._log.record(trigger="反应·主动看", action="silent",
-                         text=vc.caption, emotion=self._state.snapshot(),
-                         gate="已抓帧，caption 注入本轮回复")
-
     async def _handle_reactive(self, event: Event) -> None:
         user_text = (event.payload.get("text") or "").strip()
         if not user_text:
@@ -515,17 +462,13 @@ class Orchestrator:
         if self._speaker.is_speaking():
             self._speaker.interrupt()
 
-        # 用户发言第一时间落盘：必须在 _maybe_look 之前。开视觉时 _maybe_look 会先跑
-        # 意图判断LLM(+可能 look_now 抓帧/VLM)，耗时数秒；若 user 行等它之后才落盘，
-        # 前端 sendChat 第一轮轮询拉到的历史还没有这条 user，会用旧列表覆盖掉乐观显示
-        # → 用户消息"先消失、再和回复一起出现"。提前落盘即可避免。
+        # 用户发言第一时间落盘：必须在记忆/世界书/LLM 之前。后续 recall/Wi/LLM 耗时
+        # 数秒，若 user 行等它们之后才落盘，前端 sendChat 第一轮轮询拉到的历史还没有
+        # 这条 user，会用旧列表覆盖掉乐观显示 → 用户消息"先消失、再和回复一起出现"。
         self._log_chat("user", user_text)
 
-        # 反应路径主动看："看看我"/"打开摄像头"等——用户直接要求看时当场抓帧。
-        # 不走 tool_use（deepseek 无工具支持），复用主动路径的 action 机制：
-        # 关键词预筛 → 一次轻量意图判断 → action==look 则 look_now() 抓帧 → caption 注入历史。
-        await self._maybe_look(user_text)
-
+        # 注：反应路径"主动看"已改成 look 工具（v2.59）——LLM 在 react_stream 里自主
+        # 决定调不调，不再靠关键词预筛拦截。问"看看我"→调 look；问"看天气"→调 get_weather。
         wi_result = {"before": [], "after": [], "depth": []}
         if self._wi.has_books():
             scan = "\n".join(m.get("content", "") for m in self._chat_history[-4:]) + "\n" + user_text
@@ -541,7 +484,7 @@ class Orchestrator:
         preset = load_preset(self._cfg)
         reply_lang, translation_lang = self._get_reply_lang_config()
         time_context = _time_context(datetime.now())
-        # 用户发言已在 _maybe_look 之前落盘（见上方），此处不再重复。
+        # 用户发言已在上方第一时间落盘，此处不再重复。
 
         # on_text：文本生成完毕即触发（此时语音可能还在播放），立即写 assistant 行，
         # 聊天页 3s 轮询即可刷出完整回复，不必等整段语音放完。

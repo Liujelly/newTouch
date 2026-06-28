@@ -143,13 +143,14 @@ def test_legacy_fallback():
 
 
 def test_config_defaults():
-    """config 默认值：tools.web_search=false / provider=duckduckgo / max_results=3。"""
+    """provider/max_results 默认值 + web_search catalog 默认 false（config 可能被用户改开）。"""
     cfg = load_config()
-    # config.yaml 显式写了 tools.web_search=false
-    assert cfg.get("tools.web_search", False) is False
     assert cfg.get("web_search.provider", "duckduckgo") == "duckduckgo"
     assert int(cfg.get("web_search.max_results", 3)) == 3
-    print("✅ config 默认值正确（tools.web_search=false/provider=duckduckgo/max=3）")
+    # catalog 默认值（config 未显式写 tools.web_search 时回退到此）
+    from core.tools.catalog import get_tool_default
+    assert get_tool_default("web_search") is False
+    print("✅ provider=duckduckgo/max=3、catalog 默认 web_search=false（用户可改开）")
 
 
 if __name__ == "__main__":
