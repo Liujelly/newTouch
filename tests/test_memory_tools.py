@@ -75,14 +75,22 @@ def test_register_and_recall():
 
 def test_not_registered_when_disabled():
     """开关 B 关闭 / store 未启用 / store=None 时不注册。"""
-    # 1) tool_enabled=false
+    # 1) tools.memory_search=false（v2.58 新开关）
     tmp = tempfile.mkdtemp(prefix="newtouch_memtool_d_")
     cfg, store = _fresh_store(tmp)
+    cfg.set("tools.memory_search", False)
+    register_memory_tools(store, cfg)
+    schemas = {s["name"] for s in registry.get_schemas()}
+    assert "memory_search" not in schemas, "tools.memory_search=false 不应注册"
+    print("✅ tools.memory_search=false 时不注册")
+
+    # 1b) 旧开关 memory.tool_enabled=false 仍生效（向后兼容回退）
+    cfg.set("tools.memory_search", None)  # 清掉新开关，走回退
     cfg.set("memory.tool_enabled", False)
     register_memory_tools(store, cfg)
     schemas = {s["name"] for s in registry.get_schemas()}
-    assert "memory_search" not in schemas, "tool_enabled=false 不应注册"
-    print("✅ tool_enabled=false 时不注册")
+    assert "memory_search" not in schemas, "旧 memory.tool_enabled=false 应回退生效"
+    print("✅ 旧 memory.tool_enabled=false 兼容回退生效")
 
     # 2) store 未启用
     cfg2, store2 = _fresh_store(tempfile.mkdtemp(), enabled=False)

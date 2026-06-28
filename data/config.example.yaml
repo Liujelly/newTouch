@@ -102,7 +102,7 @@ memory:
   db_path: data/memory_db
   # 反应路径记忆注入：开→每句自动 recall 注入 system；关→不自动注入，靠 LLM 调 memory_search 工具。改完即生效
   reactive_auto_recall: true
-  # 注册 memory_search 工具给 LLM 自主调用（与 reactive_auto_recall 独立，可叠加/互替）。改后需重启
+  # 已迁移到 tools.memory_search（见下方 tools 区块）；此处保留作兼容回退，新配请用 tools.memory_search
   tool_enabled: true
   llm_model: Doubao-Seed-2.0-lite
   base_url: https://ark.cn-beijing.volces.com/api/coding/v3
@@ -117,14 +117,23 @@ memory:
   reflect_time: 00:05
   api_key: YOUR_ARK_KEY
   embed_api_key: YOUR_ARK_KEY
-# 联网搜索工具 web_search（LLM 查实时信息自主调用）。enabled 默认 false，改后需重启
+# 联网搜索工具 web_search 的后端配置（开关在下方 tools.web_search）
 web_search:
-  enabled: false
   # duckduckgo（默认，免费无需 key）/ tavily（结果更干净，需配 api_key）
   provider: duckduckgo
   max_results: 3
   # tavily 专用 key；duckduckgo 无需，留空
   api_key: ""
+# 工具注册总开关：每个工具是否注册给 LLM（改后需重启）。管理平台「工具」页可视化编辑。
+# v2.58 起统一在此管理；旧开关 memory.tool_enabled / web_search.enabled 保留作兼容回退。
+tools:
+  get_weather: true            # 查询天气（wttr.in 免费无 key）
+  memory_search: true         # 检索关于用户的长久记忆（需 memory.enabled=true）
+  web_search: false           # 联网搜索实时信息（默认关，开了才注册）
+  set_speaking_frequency: true  # 调整主动说话频率（另受权限页授权）
+  toggle_vision: true         # 开关视觉感知（另受权限页授权）
+  switch_preset: true         # 切换预设配置（另受权限页授权）
+  get_my_status: true         # 查看自己状态（只读）
 worldinfo:
   budget_chars: 2000
 global_worldbooks: []

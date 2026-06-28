@@ -283,12 +283,10 @@ def get_config_schema() -> list:
              "help": "留空则复用记忆 LLM Base URL。注意火山 embedding 在 /api/v3，非 /api/coding/v3"},
             {"k": "reactive_auto_recall", "label": "反应路径自动注入记忆", "type": "toggle",
              "help": "开：每句用户发言自动 recall 注入 system（现状）；关：不自动注入，靠 LLM 调 memory_search 工具。改完即生效"},
-            {"k": "tool_enabled", "label": "memory_search 工具", "type": "toggle", "restart": True,
-             "help": "注册 memory_search 工具给 LLM 自主调用（觉得自动注入不够时可再查）。与上面独立，可叠加/互替。改后需重启"},
+            # memory_search 工具开关已迁移到「工具」页（tools.memory_search），此处不再重复
         ]},
         {"section": "联网搜索", "key": "web_search", "fields": [
-            {"k": "enabled", "label": "启用 web_search 工具", "type": "toggle", "restart": True,
-             "help": "注册 web_search 工具给 LLM 查实时信息（近期新闻/事件/最新版本/实时数据）时自主调用。默认关，改后需重启"},
+            # web_search 工具开关已迁移到「工具」页（tools.web_search），此处仅留工具配置
             {"k": "provider", "label": "搜索引擎", "type": "select",
              "options": ["duckduckgo", "tavily"], "restart": True,
              "help": "duckduckgo 免费无需 key；tavily 结果更干净需配下方 api_key（没配自动降级 duckduckgo）"},
@@ -388,6 +386,59 @@ def put_permissions(body: PermissionUpdate) -> dict:
         except Exception as e:  # noqa: BLE001
             log.error("权限热重载失败: %s", e)
     return {"ok": True, "permissions": cfg["ai_permissions"]}
+
+
+# ── 工具管理（v2.58：统一开关 + 调用记录）──────────────────────────
+@app.get("/api/tools")
+def list_tools() -> list[dict]:
+    """列出所有工具及其开关状态、当前是否已注册。
+
+    数据源：core.tools.catalog（独立于注册状态，含已关闭的工具）。
+    enabled = tools.<name>（兼容回退旧 memory.tool_enabled / web_search.enabled）。
+    registered = 当前 registry 里有没有（启动时按开关注册的）。
+    """
+    from core.tools import registry
+    from core.tools.catalog import catalog_summary, is_tool_enabled
+
+    cfg = _live_config
+    registered = {s["name"] for s in registry.get_schemas()}
+    out = []
+    for t in catalog_summary():
+        name = t["name"]
+        out.append({
+            "name": name,
+            "label": t["label"],
+            "source": t["source"],
+            "enabled": is_tool_enabled(cfg, name) if cfg is not None else t["default"],
+            "registered": name in registered,
+            "restart": True,  # 工具开关都是启动时读，改后需重启
+        })
+    return out
+
+
+class ToolToggle(BaseModel):
+    enabled: bool
+
+
+@app.put("/api/tools/{name}")
+def toggle_tool(name: str, body: ToolToggle) -> dict:
+    """切换某工具的注册开关 tools.<name>。改后需重启生效（工具注册是启动时发生的）。"""
+    from core.tools.catalog import TOOL_CATALOG
+
+    known = {t["name"] for t in TOOL_CATALOG}
+    if name not in known:
+        raise HTTPException(400, f"未知工具: {name}")
+    cfg = _load_raw_config()
+    tools_cfg = cfg.setdefault("tools", {})
+    tools_cfg[name] = bool(body.enabled)
+    _save_raw_config(cfg)
+    if _live_config is not None:
+        try:
+            _live_config.reload()
+        except Exception as e:  # noqa: BLE001
+            log.error("配置热重载失败: %s", e)
+    log.info("工具开关 %s=%s（需重启生效）", name, body.enabled)
+    return {"ok": True, "name": name, "enabled": body.enabled, "needs_restart": True}
 
 
 # ── 观测面板（路径已按角色隔离）──────────────────────────────────

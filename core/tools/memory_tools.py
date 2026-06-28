@@ -8,9 +8,10 @@
 
 注册：main.py 启动时调 register_memory_tools(memory_store, config)，
 把工具连同 store 闭包注册进 tools.registry，供 tool_use 调用。
-memory_store=None / 记忆未启用 / memory.tool_enabled=false 时不注册（空操作）。
+memory_store=None / 记忆未启用 / tools.memory_search=false 时不注册（空操作）。
 
 工具内部固定 limit=3（和自动注入一致），不暴露给 LLM 防乱刷检索。
+v2.58 开关从 memory.tool_enabled 迁移到 tools.memory_search（旧值保留作兼容回退）。
 """
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ from typing import TYPE_CHECKING
 
 from ..config import Config
 from ..logger import get_logger
+from .catalog import is_tool_enabled
 from .registry import register
 
 if TYPE_CHECKING:
@@ -46,13 +48,13 @@ _SCHEMA = {
 def register_memory_tools(memory_store: "MemoryStore | None", config: Config | None = None) -> None:
     """把 memory_search 工具注册进 registry。
 
-    memory_store 为 None（记忆禁用）/ store 未启用 / config.memory.tool_enabled=false
+    memory_store 为 None（记忆禁用）/ store 未启用 / tools.memory_search=false
     时不注册。开关启动时读一次（改后需重启，与 LLM/STT 等“需重启”字段一致——工具增删低频）。
     """
     if memory_store is None:
         return
-    if config is not None and not config.get("memory.tool_enabled", True):
-        log.info("memory.tool_enabled=false，不注册 memory_search 工具")
+    if config is not None and not is_tool_enabled(config, "memory_search"):
+        log.info("tools.memory_search=false，不注册 memory_search 工具")
         return
     if not getattr(memory_store, "_enabled", False):
         log.info("记忆未启用，不注册 memory_search 工具")

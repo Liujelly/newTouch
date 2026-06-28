@@ -11,9 +11,10 @@
     标题/链接/摘要。无额外依赖（复用 httpx，与 get_weather 同款）。
   - tavily（可选，需 web_search.api_key）：结果更干净，有免费额度。配了 key 即用。
 
-注册：main.py 启动时调 register_web_search_tools(config)，开关 web_search.enabled
+注册：main.py 启动时调 register_web_search_tools(config)，开关 tools.web_search
 （默认 false，改后需重启——工具增删低频，与 memory.tool_enabled 一致）。
 provider/api_key/max_results 同为启动时读（restart）。
+v2.58 开关从 web_search.enabled 迁移到 tools.web_search（旧值保留作兼容回退）。
 """
 from __future__ import annotations
 
@@ -25,6 +26,7 @@ import httpx
 
 from ..config import Config
 from ..logger import get_logger
+from .catalog import is_tool_enabled
 from .registry import register
 
 log = get_logger("web_search")
@@ -166,11 +168,11 @@ def _format_results(query: str, items: list[tuple[str, str, str]]) -> str:
 def register_web_search_tools(config: "Config | None" = None) -> None:
     """把 web_search 工具注册进 registry。
 
-    web_search.enabled=false（默认）时不注册。provider/api_key/max_results 启动时
+    tools.web_search=false（默认）时不注册。provider/api_key/max_results 启动时
     读一次（改后需重启，与 LLM/STT/memory.tool_enabled 等 restart 字段一致）。
     tavily 必须配 api_key，否则降级回 duckduckgo 并告警。
     """
-    if config is None or not config.get("web_search.enabled", False):
+    if config is None or not is_tool_enabled(config, "web_search"):
         return
 
     provider = config.get("web_search.provider", "duckduckgo") or "duckduckgo"

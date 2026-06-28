@@ -561,6 +561,38 @@ input:checked+.slider::before{background:#fff;transform:translateX(16px)}
     </div>
 
     <!-- 系统日志 -->
+    <!-- 工具 -->
+    <div v-if="tab==='tools'">
+      <div class="card">
+        <div class="card-title open">工具管理</div>
+        <p style="color:#64748b;font-size:12px;margin-bottom:12px">
+          控制 ta 能调用哪些工具。开关 = 是否把工具注册给 LLM（关了 ta 就看不到、调不了）。<b>改后需重启生效</b>。
+          自我配置类工具另受「权限」页运行时授权控制（注册了但没授权 = 看得到调不动）。
+        </p>
+        <div class="perm-row" v-for="t in toolsList" :key="t.name">
+          <div>
+            <div>{{t.label}} <span style="color:#64748b;font-size:11px">({{t.name}})</span>
+              <span v-if="t.registered" style="color:#22c55e;font-size:11px;margin-left:6px">● 已注册</span>
+              <span v-else style="color:#64748b;font-size:11px;margin-left:6px">○ 未注册</span>
+            </div>
+            <div style="font-size:11px;color:#475569;margin-top:2px">来源：{{t.source}}</div>
+          </div>
+          <label class="toggle"><input type="checkbox" :checked="t.enabled" @change="toggleTool(t.name, $event.target.checked)"><span class="slider"></span></label>
+        </div>
+        <div class="empty" v-if="!toolsList.length">加载中…</div>
+      </div>
+      <div class="card">
+        <div class="card-title open">怎么知道 ta 调没调工具？</div>
+        <p style="color:#94a3b8;font-size:13px;line-height:1.7">
+          每次工具调用都会写进「日志」页。去日志页 → 模块选 <code>cognition</code> 或级别 <code>INFO</code>，
+          搜「调用工具」即可看到：<br>
+          <code style="color:#818cf8">[LLM] 调用工具 web_search（{"query":"..."}）</code><br>
+          <code style="color:#818cf8">[LLM] 工具 web_search 返回: 搜索「...」得到 3 条结果…</code><br>
+          失败会是 WARNING 级别 <code>工具 xxx 调用失败</code>。
+        </p>
+      </div>
+    </div>
+
     <div v-if="tab==='logs'">
       <div class="card">
         <div class="card-title" :class="{open:cards.logs}" @click="toggleCard('logs')">
@@ -615,6 +647,7 @@ createApp({
       {id:'wb',label:'世界书'},
       {id:'voices',label:'语音库'},
       {id:'sprites',label:'立绘库'},
+      {id:'tools',label:'工具'},
       {id:'logs',label:'日志'},
     ]
     const tab = ref('chat')
@@ -635,6 +668,7 @@ createApp({
       if (t==='wb') loadWbList()
       if (t==='voices') loadVlList()
       if (t==='sprites') { loadCardList(); loadSprites() }
+      if (t==='tools') loadTools()
       if (t==='logs') loadLogs()
     })
 
@@ -702,7 +736,7 @@ createApp({
     const logLevel = ref('')
     const logModule = ref('')
     const logAuto = ref(true)
-    const logModules = ['main','admin','orch','cognition','memory','audio','stt','vision','speak','worldinfo','self_config','newtouch']
+    const logModules = ['main','admin','orch','cognition','memory','audio','stt','vision','speak','worldinfo','self_config','newtouch','web_search','memory_tool','tool_external']
     async function loadLogs() {
       const q = new URLSearchParams()
       if (logLevel.value) q.set('level', logLevel.value)
@@ -794,6 +828,27 @@ createApp({
     async function savePerms() {
       const r = await fetch('/api/permissions',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({permissions:{...perms}})})
       showToast(r.ok?'✓ 权限已保存':'保存失败', r.ok)
+    }
+
+    // ── 工具 ────────────────────────────────────────────────
+    const toolsList = ref([])
+    async function loadTools() {
+      toolsList.value = await fetch('/api/tools',{cache:'no-store'}).then(r=>r.json())
+    }
+    async function toggleTool(name, enabled) {
+      const r = await fetch(`/api/tools/${name}`,{
+        method:'PUT',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({enabled})
+      }).then(r=>r.json()).catch(()=>null)
+      if (r && r.ok) {
+        // 即时反映开关状态；registered 仍反映旧值（重启后才变）
+        const t = toolsList.value.find(x=>x.name===name)
+        if (t) t.enabled = enabled
+        showToast(`✓ ${name} 已${enabled?'开':'关'}（需重启生效）`, true)
+      } else {
+        showToast('保存失败', false)
+        await loadTools()  // 回滚显示
+      }
     }
 
     // ── 角色卡 ──────────────────────────────────────────────
@@ -1213,6 +1268,7 @@ createApp({
       cfgRaw, schema, openSecs, getCfgVal, setCfgVal, saveCfg,
       switchCharacter, switchPreset, setPresetEnabled,
       perms, permLabel, permDesc, savePerms,
+      toolsList, loadTools, toggleTool,
       cardList, cardName, cardData, cardFields, loadCard, saveCard,
       cardNewName, createCard, cardRenameVal, renameCard, renaming, renameInput, openRename, deleteCard,
       wbAllList, cardWorld, cardWorldAdd, toggleWorldAdd,

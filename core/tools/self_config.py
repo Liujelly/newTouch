@@ -214,10 +214,21 @@ def register_self_config_tools(
     state: EmotionState,
     refreshers: dict[str, Callable] | None = None,
 ) -> SelfConfig:
-    """构造 SelfConfig 并把 5 个白名单工具注册进 registry。返回实例供测试/复用。"""
+    """构造 SelfConfig 并把白名单工具注册进 registry。返回实例供测试/复用。
+
+    每个工具各自读 tools.<name> 开关（默认 true，restart）。
+    注意：注册开关（tools.<name>）控制工具是否暴露给 LLM；ai_permissions 运行时
+    权限控制调用时是否放行——两层独立，可叠加（注册了但权限关 = LLM 看得到调不动）。
+    """
+    from .catalog import is_tool_enabled
     sc = SelfConfig(config, state, refreshers)
-    register(_SCHEMAS["set_speaking_frequency"], sc.set_speaking_frequency)
-    register(_SCHEMAS["toggle_vision"], sc.toggle_vision)
-    register(_SCHEMAS["switch_preset"], sc.switch_preset)
-    register(_SCHEMAS["get_my_status"], sc.get_my_status)
+    _to_register = [
+        ("set_speaking_frequency", sc.set_speaking_frequency),
+        ("toggle_vision", sc.toggle_vision),
+        ("switch_preset", sc.switch_preset),
+        ("get_my_status", sc.get_my_status),
+    ]
+    for name, fn in _to_register:
+        if is_tool_enabled(config, name):
+            register(_SCHEMAS[name], fn)
     return sc

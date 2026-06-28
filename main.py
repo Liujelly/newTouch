@@ -19,7 +19,7 @@ from core.action.speak import Speaker
 from core.orchestrator import Orchestrator
 from core.perception.audio_in import TextInput, MicInput, Classifier
 from core.heartbeat import Heartbeat
-import core.tools.external  # noqa: F401  import 即注册工具到 registry
+from core.tools.external import register_external_tools
 from core.tools.self_config import register_self_config_tools
 
 
@@ -84,11 +84,14 @@ async def main() -> None:
     }
     register_self_config_tools(cfg, state, refreshers={"gatekeeper": _refresh_gatekeeper, "vision": _refresh_vision})
 
-    # 注册记忆检索工具 memory_search（反应路径 LLM 可自主调用，开关 memory.tool_enabled）
+    # 注册外部查询工具 get_weather（开关 tools.get_weather）
+    register_external_tools(cfg)
+
+    # 注册记忆检索工具 memory_search（反应路径 LLM 可自主调用，开关 tools.memory_search）
     from core.tools.memory_tools import register_memory_tools
     register_memory_tools(orch._memory, cfg)
 
-    # 注册联网搜索工具 web_search（LLM 查实时信息自主调用，开关 web_search.enabled）
+    # 注册联网搜索工具 web_search（LLM 查实时信息自主调用，开关 tools.web_search）
     from core.tools.web_search import register_web_search_tools
     register_web_search_tools(cfg)
 

@@ -103,15 +103,15 @@ def test_parse_empty_html():
 
 
 def test_register_enabled():
-    """enabled=true 时注册进 registry，能 call。"""
+    """tools.web_search=true 时注册进 registry，能 call。"""
     cfg = load_config()
-    cfg.set("web_search.enabled", True)
+    cfg.set("tools.web_search", True)
     cfg.set("web_search.provider", "duckduckgo")
     cfg.set("web_search.max_results", 5)
     register_web_search_tools(cfg)
     schemas = {s["name"] for s in registry.get_schemas()}
-    assert "web_search" in schemas, "enabled=true 应注册 web_search"
-    print("✅ enabled=true 注册 web_search")
+    assert "web_search" in schemas, "tools.web_search=true 应注册 web_search"
+    print("✅ tools.web_search=true 注册 web_search")
 
     # 空 query 不触网
     result = asyncio.run(registry.call("web_search", query=""))
@@ -121,23 +121,35 @@ def test_register_enabled():
 
 
 def test_register_disabled():
-    """enabled=false 时不注册。"""
+    """tools.web_search=false 时不注册。"""
     cfg = load_config()
-    cfg.set("web_search.enabled", False)
+    cfg.set("tools.web_search", False)
     register_web_search_tools(cfg)
     schemas = {s["name"] for s in registry.get_schemas()}
-    assert "web_search" not in schemas, "enabled=false 不应注册"
-    print("✅ enabled=false 时不注册")
+    assert "web_search" not in schemas, "tools.web_search=false 不应注册"
+    print("✅ tools.web_search=false 时不注册")
+
+
+def test_legacy_fallback():
+    """旧开关 web_search.enabled=true 在 tools.web_search 未设时兼容回退注册。"""
+    cfg = load_config()
+    cfg.set("tools.web_search", None)  # 清新开关
+    cfg.set("web_search.enabled", True)  # 旧开关
+    register_web_search_tools(cfg)
+    schemas = {s["name"] for s in registry.get_schemas()}
+    assert "web_search" in schemas, "旧 web_search.enabled=true 应回退注册"
+    print("✅ 旧 web_search.enabled=true 兼容回退注册")
+    _cleanup_registry()
 
 
 def test_config_defaults():
-    """config 默认值：enabled=false / provider=duckduckgo / max_results=3。"""
+    """config 默认值：tools.web_search=false / provider=duckduckgo / max_results=3。"""
     cfg = load_config()
-    # config.yaml 现在显式写了 web_search.enabled=false，断言默认行为
-    assert cfg.get("web_search.enabled", False) is False
+    # config.yaml 显式写了 tools.web_search=false
+    assert cfg.get("tools.web_search", False) is False
     assert cfg.get("web_search.provider", "duckduckgo") == "duckduckgo"
     assert int(cfg.get("web_search.max_results", 3)) == 3
-    print("✅ config 默认值正确（enabled=false/provider=duckduckgo/max=3）")
+    print("✅ config 默认值正确（tools.web_search=false/provider=duckduckgo/max=3）")
 
 
 if __name__ == "__main__":
@@ -149,6 +161,7 @@ if __name__ == "__main__":
     test_parse_empty_html()
     test_register_enabled()
     test_register_disabled()
+    test_legacy_fallback()
     test_config_defaults()
     _cleanup_registry()
     print("\n=== 全部测试通过 ===")

@@ -7,7 +7,12 @@ from __future__ import annotations
 
 import httpx
 
+from ..config import Config
+from ..logger import get_logger
+from .catalog import is_tool_enabled
 from .registry import register
+
+log = get_logger("tool_external")
 
 # ── 天气查询 (wttr.in，免费无需 key) ──────────────────────────
 async def _get_weather(location: str = "auto") -> str:
@@ -60,7 +65,7 @@ async def _get_weather(location: str = "auto") -> str:
     return "天气查询失败: 重试次数已用尽"
 
 
-register({
+_WEATHER_SCHEMA = {
     "name": "get_weather",
     "description": "查询某地天气（不传 location 则用 auto 自动定位）",
     "input_schema": {
@@ -70,4 +75,15 @@ register({
         },
         "required": [],
     },
-}, _get_weather)
+}
+
+
+def register_external_tools(config: "Config | None" = None) -> None:
+    """注册外部查询工具（get_weather）。开关 tools.get_weather（默认 true，restart）。
+
+    v2.58 前是模块顶部 import 即注册；改为函数注册以支持统一开关。
+    """
+    if not is_tool_enabled(config, "get_weather"):
+        return
+    register(_WEATHER_SCHEMA, _get_weather)
+    log.info("已注册 get_weather 工具")

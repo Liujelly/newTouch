@@ -342,6 +342,7 @@ class Cognition:
                     args = json.loads(tc["arguments"]) if tc["arguments"] else {}
                     log.info("[LLM] 调用工具 %s（%s）", tc["name"], json.dumps(args, ensure_ascii=False)[:80])
                     result = await registry.call(tc["name"], **args)
+                    log.info("[LLM] 工具 %s 返回: %s", tc["name"], str(result)[:200])
                 except Exception as e:  # noqa: BLE001
                     result = f"工具调用失败: {e}"
                     log.warning("[LLM] 工具 %s 调用失败: %s", tc["name"], e)
@@ -379,6 +380,7 @@ class Cognition:
                     log.info("[LLM] 调用工具 %s（%s）", tu.name,
                              _json.dumps(tu.input or {}, ensure_ascii=False)[:80])
                     out = await registry.call(tu.name, **(tu.input or {}))
+                    log.info("[LLM] 工具 %s 返回: %s", tu.name, str(out)[:200])
                 except Exception as e:  # noqa: BLE001
                     out = f"工具调用失败: {e}"
                     log.warning("[LLM] 工具 %s 调用失败: %s", tu.name, e)
@@ -477,6 +479,7 @@ class Cognition:
                     log.info("[LLM] 调用工具 %s（%s）", tu.name,
                              _json.dumps(tu.input or {}, ensure_ascii=False)[:80])
                     out = await registry.call(tu.name, **(tu.input or {}))
+                    log.info("[LLM] 工具 %s 返回: %s", tu.name, str(out)[:200])
                 except Exception as e:  # noqa: BLE001
                     out = f"工具调用失败: {e}"
                     log.warning("[LLM] 工具 %s 调用失败: %s", tu.name, e)
@@ -558,6 +561,7 @@ class Cognition:
                     log.info("[LLM] 调用工具 %s（%s）", tc.function.name,
                              json.dumps(args, ensure_ascii=False)[:80])
                     out = await registry.call(tc.function.name, **args)
+                    log.info("[LLM] 工具 %s 返回: %s", tc.function.name, str(out)[:200])
                 except Exception as e:  # noqa: BLE001
                     out = f"工具调用失败: {e}"
                     log.warning("[LLM] 工具 %s 调用失败: %s", tc.function.name, e)
