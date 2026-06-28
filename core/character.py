@@ -145,6 +145,33 @@ def _face_instruction(face_emotions: list[str] | None) -> str:
     )
 
 
+def _tool_guidance() -> str:
+    """动态生成工具使用引导（反应路径 system 末尾）。
+
+    从 registry 读当前已注册工具，告诉 LLM：①有哪些工具可用 ②何时该调
+    ③关键——不要凭对话历史里出现过的视觉 caption/记忆/旧信息编"当前"事实，
+    那可能已过时，要看现在画面必须调 look、要查实时信息必须调对应工具。
+
+    无工具注册时返回空串（不污染 prompt）。
+    """
+    try:
+        from .tools import registry
+        schemas = registry.get_schemas()
+    except Exception:  # noqa: BLE001
+        return ""
+    if not schemas:
+        return ""
+    names = "、".join(s["name"] for s in schemas)
+    return (
+        "# 工具使用\n"
+        f"你可用工具：{names}。需要时**主动调用**，不要硬编结论。\n"
+        "重要：对话历史里可能出现过画面描述/天气/记忆等信息，那是**过去**的，不代表现在。"
+        "用户要你「看看」现在的画面→调 look 抓当前帧，不要凭历史 caption 编（人可能已移动/换装）；"
+        "问天气/新闻/实时信息→调 get_weather/web_search，不要凭记忆编。"
+        "只有工具返回的结果才是当前真实信息。"
+    )
+
+
 def _build_system(card: CharacterCard, user_name: str,
                   user_persona: str = "",
                   world_before: list[str] | None = None,
@@ -154,7 +181,8 @@ def _build_system(card: CharacterCard, user_name: str,
                   translation_lang: str = "",
                   voice_emotions: list[str] | None = None,
                   lang_instruction: bool = True,
-                  face_emotions: list[str] | None = None) -> str:
+                  face_emotions: list[str] | None = None,
+                  tool_guidance: bool = False) -> str:
     """组装角色系统提示。世界书 before 在角色定义前, after 在其后 (架构文档 6.5)。
 
     预设（提示词预设）叠加位置：
@@ -212,6 +240,11 @@ def _build_system(card: CharacterCard, user_name: str,
     face_instr = _face_instruction(face_emotions)
     if face_instr:
         sys_parts.append(face_instr)
+    # 工具使用引导（仅反应路径：反应路径走 tool_use，主动路径用 action 机制不需要）
+    if tool_guidance:
+        tg = _tool_guidance()
+        if tg:
+            sys_parts.append(tg)
     return "\n\n".join(sys_parts)
 
 
@@ -328,7 +361,7 @@ def build_reactive_prompt(
     """
     system_prompt = _build_system(card, user_name, user_persona, world_before, world_after,
                                   preset, reply_lang, translation_lang, voice_emotions,
-                                  face_emotions=face_emotions)
+                                  face_emotions=face_emotions, tool_guidance=True)
     messages = _history_to_messages(chat_history)
     # 情绪 + 相关记忆作为 system 消息注入在历史前 (比历史更"新鲜")
     inject = []
