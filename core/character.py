@@ -162,13 +162,19 @@ def _tool_guidance() -> str:
     if not schemas:
         return ""
     names = "、".join(s["name"] for s in schemas)
+    has_look = any(s["name"] == "look" for s in schemas)
+    look_clause = (
+        "用户要你「看看」「看一下」现在的画面/姿势/样子→**必须调 look 工具**抓当前帧，"
+        "绝不凭对话历史里「系统自动抓取到画面」的内容编——那是被动抓取的、可能已过时"
+        "（人可能已移动/换装/离开）。即使用户没明说\"调用工具\"，只要意图是看现在，就调 look。"
+        if has_look else ""
+    )
     return (
         "# 工具使用\n"
         f"你可用工具：{names}。需要时**主动调用**，不要硬编结论。\n"
-        "重要：对话历史里可能出现过画面描述/天气/记忆等信息，那是**过去**的，不代表现在。"
-        "用户要你「看看」现在的画面→调 look 抓当前帧，不要凭历史 caption 编（人可能已移动/换装）；"
+        f"{look_clause}\n"
         "问天气/新闻/实时信息→调 get_weather/web_search，不要凭记忆编。"
-        "只有工具返回的结果才是当前真实信息。"
+        "只有工具返回的结果才是当前真实信息，历史里的都是过去的。"
     )
 
 

@@ -38,9 +38,24 @@ def test_reactive_has_tool_guidance():
             _card(), "用户", "看看我", chat_history=[])
         assert "工具使用" in sys_prompt, "反应路径 system 应含工具使用引导"
         assert "_test_tool_a" in sys_prompt, "引导应含已注册工具名"
-        assert "不要凭历史 caption 编" in sys_prompt or "历史 caption" in sys_prompt, \
-            "应明确告诫别凭历史编"
+        assert "不要凭记忆编" in sys_prompt or "过去" in sys_prompt, \
+            "应明确告诫历史信息是过去的"
         print("✅ 反应路径 system 含工具引导 + 工具名 + 反编告诫")
+    finally:
+        _cleanup()
+
+
+def test_reactive_look_strong_guidance():
+    """注册 look 时引导含「必须调 look」强措辞 + 提及自动抓取画面。"""
+    async def _look(): return "ok"
+    registry.register({"name": "look", "description": "看一眼画面",
+                       "input_schema": {"type": "object", "properties": {}, "required": []}}, _look)
+    try:
+        sys_prompt, _ = build_reactive_prompt(
+            _card(), "用户", "看看我", chat_history=[])
+        assert "必须调 look" in sys_prompt, "注册 look 时应强措辞要求调 look"
+        assert "自动抓取" in sys_prompt, "应提及历史里的自动抓取画面可能过时"
+        print("✅ 注册 look 时引导含「必须调 look」+ 提及自动抓取画面")
     finally:
         _cleanup()
 
@@ -79,6 +94,7 @@ def test_no_tools_no_guidance():
 if __name__ == "__main__":
     print("=== 测试反应路径工具使用引导 ===\n")
     test_reactive_has_tool_guidance()
+    test_reactive_look_strong_guidance()
     test_proactive_no_tool_guidance()
     test_no_tools_no_guidance()
     _cleanup()
