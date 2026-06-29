@@ -1050,7 +1050,11 @@ def delete_preset(name: str) -> dict:
 # ── 静态前端 ──────────────────────────────────────────────────
 @app.get("/")
 def index() -> FileResponse:
-    return FileResponse(str(_UI_DIR / "index.html"))
+    # 禁止浏览器缓存 HTML：前端改动频繁，避免用户看到旧版本（FileResponse 默认可被缓存）
+    return FileResponse(
+        str(_UI_DIR / "index.html"),
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"},
+    )
 
 
 if _UI_DIR.exists():

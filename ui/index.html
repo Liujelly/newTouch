@@ -3,90 +3,249 @@
 <head>
 <meta charset="UTF-8">
 <title>newTouch 管理平台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Spline+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
+:root{
+  --bg:#f5f7fa; --bg-2:#ffffff; --panel:#ffffff; --panel-2:#f5f7fa;
+  --inset:#ffffff; --ink:#303133; --ink-2:#606266; --ink-3:#909399; --ink-4:#C0C4CC;
+  --line:#EBEEF5; --line-2:#DCDFE6;
+  --amber:#409EFF; --amber-2:#3a8ee6; --amber-hover:#66b1ff; --amber-glow:rgba(64,158,255,.18);
+  --sage:#67C23A; --gold:#E6A23C; --crimson:#F56C6C; --sky:#409EFF;
+  --serif:'Fraunces',Georgia,'Songti SC',serif;
+  --sans:'Spline Sans','PingFang SC','Microsoft YaHei',system-ui,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,'Consolas',monospace;
+  --rad:4px;
+}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:system-ui,sans-serif;background:#0f1117;color:#e2e8f0;font-size:14px;height:100vh;display:flex;flex-direction:column}
-header{padding:12px 20px;background:#1a1d26;border-bottom:1px solid #2d3148;display:flex;align-items:center;gap:10px;flex-shrink:0}
-header h1{font-size:15px;font-weight:600}
-nav{display:flex;gap:2px;padding:8px 16px 0;background:#1a1d26;border-bottom:1px solid #2d3148;flex-shrink:0}
-nav button{background:none;border:none;color:#94a3b8;padding:7px 13px;cursor:pointer;border-bottom:2px solid transparent;font-size:13px}
-nav button.active{color:#e2e8f0;border-bottom-color:#818cf8}
-.content{flex:1;overflow:auto;padding:18px 20px}
-.card{background:#1a1d26;border:1px solid #2d3148;border-radius:8px;padding:14px;margin-bottom:12px}
-.card-title{font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px}
-.card-title::before{content:"▸";font-size:10px;transition:.15s}
-.card-title.open::before{content:"▾"}
-.card-body{display:none}.card-body.open{display:block}
-.field-row{display:grid;grid-template-columns:160px 1fr;align-items:center;gap:8px;margin-bottom:8px}
-.field-row label{color:#94a3b8;font-size:12px;text-align:right}
-.field-help{grid-column:2;color:#64748b;font-size:11px;margin-top:-2px;line-height:1.4}
-.restart-badge{display:inline-block;margin-left:6px;padding:0 6px;border-radius:8px;font-size:10px;background:#422006;color:#fbbf24;border:1px solid #854d0e;vertical-align:middle}
-input[type=text],input[type=password],input[type=number],select,textarea{width:100%;background:#0f1117;border:1px solid #2d3148;border-radius:4px;color:#e2e8f0;padding:5px 8px;font-size:13px}
-textarea{resize:vertical;min-height:60px;font-family:inherit}
-input[type=number]{width:100px}
-.toggle{position:relative;width:34px;height:18px;display:inline-block}
+html,body{height:100%}
+body{
+  font-family:var(--sans); background:var(--bg); color:var(--ink);
+  font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased;
+  height:100vh; display:flex; flex-direction:column; overflow:hidden; position:relative;
+}
+/* 浅蓝光氛围 + 极淡噪点 */
+body::before{
+  content:""; position:fixed; inset:0; z-index:0; pointer-events:none;
+  background:
+    radial-gradient(900px 520px at 88% -10%, rgba(64,158,255,.08), transparent 60%),
+    radial-gradient(720px 600px at -8% 110%, rgba(102,177,255,.06), transparent 55%);
+}
+body::after{
+  content:""; position:fixed; inset:0; z-index:0; pointer-events:none; opacity:.035;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
+}
+#app{display:flex;flex-direction:column;height:100vh;position:relative;z-index:1}
+header{
+  padding:13px 26px; display:flex; align-items:center; gap:12px; flex-shrink:0;
+  background:#fff;
+  border-bottom:1px solid var(--line-2);
+}
+.brand-mark{
+  width:30px;height:30px;border-radius:var(--rad);display:grid;place-items:center;
+  background:var(--amber);
+  box-shadow:0 0 0 1px rgba(64,158,255,.25),0 4px 12px -4px var(--amber-glow); color:#fff;
+}
+.brand-mark svg{width:17px;height:17px}
+header h1{font-family:var(--serif);font-weight:600;font-size:18px;letter-spacing:.01em;color:var(--ink)}
+header h1 .sub{font-family:var(--sans);font-weight:400;font-size:12px;color:var(--ink-3);margin-left:9px;letter-spacing:.04em}
+.live-dot{margin-left:auto;display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10.5px;color:var(--ink-3);letter-spacing:.08em}
+.live-dot::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--sage);box-shadow:0 0 0 0 rgba(103,194,58,.5);animation:pulse 2.2s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(103,194,58,.45)}70%{box-shadow:0 0 0 7px rgba(103,194,58,0)}100%{box-shadow:0 0 0 0 rgba(103,194,58,0)}}
+nav{
+  display:flex;gap:2px;padding:0 18px;flex-shrink:0;border-bottom:1px solid var(--line);
+  background:rgba(255,255,255,.6);overflow-x:auto;scrollbar-width:thin;
+}
+nav button{
+  background:none;border:none;color:var(--ink-3);cursor:pointer;font-family:var(--sans);
+  padding:11px 13px 13px;font-size:12.5px;display:flex;align-items:center;gap:7px;white-space:nowrap;
+  border-bottom:2px solid transparent;transition:color .18s,border-color .18s;
+}
+nav button .tab-ico{display:flex;opacity:.8;transition:.18s}
+nav button .tab-ico svg{width:15px;height:15px}
+nav button:hover{color:var(--ink-2)}
+nav button:hover .tab-ico{opacity:1}
+nav button.active{color:var(--ink);border-bottom-color:var(--amber)}
+nav button.active .tab-ico{opacity:1;color:var(--amber)}
+.content{flex:1;overflow:auto;padding:22px 26px 44px;position:relative}
+.card{
+  background:#fff;
+  border:1px solid var(--line-2);border-radius:var(--rad);padding:18px 20px;margin-bottom:14px;
+  box-shadow:0 2px 12px 0 rgba(0,0,0,.04);
+  animation:rise .42s cubic-bezier(.2,.7,.2,1) both;
+}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.card:nth-child(2){animation-delay:.04s}.card:nth-child(3){animation-delay:.08s}
+.card:nth-child(4){animation-delay:.12s}.card:nth-child(5){animation-delay:.16s}
+.card-title{
+  font-family:var(--serif);font-size:13.5px;font-weight:600;color:var(--ink);letter-spacing:.02em;
+  margin-bottom:12px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:8px;
+}
+.card-title::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--amber);opacity:.65;transition:.2s}
+.card-title.open::before{opacity:1;box-shadow:0 0 8px var(--amber-glow)}
+.card-body{display:none}.card-body.open{display:block;animation:fade .25s ease both}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.field-row{display:grid;grid-template-columns:160px 1fr;align-items:center;gap:10px;margin-bottom:14px}
+.field-row label{color:var(--ink);font-size:13.5px;text-align:right;font-weight:500}
+.field-help{grid-column:2;color:var(--ink-3);font-size:12px;margin-top:-4px;line-height:1.5}
+.info-box{padding:9px 13px;background:#F4F4F5;border:1px solid var(--line-2);border-radius:var(--rad);color:var(--ink-2);font-size:12.5px;line-height:1.5}
+/* 配置页侧边导航 */
+.config-layout{display:flex;gap:18px;align-items:flex-start}
+.config-aside{position:sticky;top:0;flex-shrink:0;width:148px;max-height:calc(100vh - 130px);overflow-y:auto;padding:10px 0;background:#fff;border:1px solid var(--line-2);border-radius:var(--rad);box-shadow:0 2px 12px 0 rgba(0,0,0,.04)}
+.config-aside-hd{font-size:11px;color:var(--ink-3);padding:2px 14px 8px;letter-spacing:.05em;font-weight:600;text-transform:uppercase}
+.config-aside-item{display:block;padding:8px 14px;font-size:12.5px;color:var(--ink-2);cursor:pointer;border-left:2px solid transparent;transition:.15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.config-aside-item:hover{color:var(--amber);background:#F4F4F5}
+.config-aside-item.active{color:var(--amber);border-left-color:var(--amber);background:rgba(64,158,255,.06);font-weight:600}
+.config-main{flex:1;min-width:0}
+/* 工具栏里的输入框/下拉 —— 统一宽度，去掉各行参差不齐的内联 width */
+.tb-bar{display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap}
+.tb-in{width:170px!important}
+.tb-in.w220{width:220px!important}
+.tb-sel{width:150px!important}
+.tb-sel.w90{width:96px!important}
+.restart-badge{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:7px;font-size:9.5px;background:rgba(230,162,60,.12);color:var(--gold);border:1px solid rgba(230,162,60,.4);vertical-align:middle;letter-spacing:.04em}
+input[type=text],input[type=password],input[type=number],input:not([type]):not([class*=toggle]),
+select,textarea{
+  width:100%;background:#fff;border:1px solid var(--line-2);border-radius:var(--rad);color:var(--ink);
+  padding:8px 12px;font-size:13.5px;font-family:var(--sans);line-height:1.4;
+  height:36px;vertical-align:middle;box-sizing:border-box;transition:border-color .2s,box-shadow .2s;
+}
+textarea{height:auto;resize:vertical;min-height:64px;font-family:var(--sans);line-height:1.5}
+input::placeholder,textarea::placeholder{color:var(--ink-4)}
+input:hover,select:hover,textarea:hover{border-color:#C0C4CC}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--amber);box-shadow:0 0 0 2px var(--amber-glow)}
+input:disabled,select:disabled,textarea:disabled{background:#F5F7FA;color:var(--ink-4);cursor:not-allowed;border-color:var(--line-2)}
+select:disabled{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23C0C4CC' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")}
+input[type=number]{width:100px;height:36px}
+/* 文件上传 —— 立绘上传那种原生 input[type=file] 之前完全没样式 */
+input[type=file]{width:auto;padding:6px 10px;font-size:12px;background:#fff;border:1px dashed var(--line-2);cursor:pointer}
+input[type=file]:hover{border-color:var(--amber);color:var(--amber)}
+input[type=file]::file-selector-button{border:none;background:var(--panel-2);color:var(--ink-2);padding:5px 11px;border-radius:var(--rad);font-size:12px;font-family:var(--sans);cursor:pointer;margin-right:10px;transition:.16s}
+input[type=file]::file-selector-button:hover{background:var(--amber);color:#fff}
+/* range 滑块 —— 默认很丑，按主色调美化 */
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:6px;padding:0;background:transparent;border:none;cursor:pointer}
+input[type=range]:focus{outline:none;box-shadow:none}
+input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:#EBEEF5;border:1px solid var(--line)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;border-radius:50%;background:#fff;border:2px solid var(--amber);margin-top:-6px;box-shadow:0 1px 4px rgba(0,0,0,.18);transition:.15s}
+input[type=range]::-webkit-slider-thumb:hover{border-color:var(--amber-hover)}
+input[type=range]::-moz-range-track{height:6px;border-radius:3px;background:#EBEEF5}
+input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:#fff;border:2px solid var(--amber)}
+/* 原生勾选框（世界书附加绑定那种）—— 跟 Toggle 主色一致 */
+input[type=checkbox]{width:15px;height:15px;accent-color:var(--amber);cursor:pointer;vertical-align:middle}
+/* ===== 强制兜底：所有文本类输入框/下拉/文本域统一 Element 风格（!important 压过一切内联/冲突） ===== */
+/* 注意：裸 <input>（无 type，默认 text）不被 input[type=text] 匹配，故单独列入 input 选择器；
+   checkbox/radio/file/range 已各自单独规则覆盖，用 :not 排除避免互相干扰 */
+input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not([type=submit]):not([type=button]),
+input[type=text],input[type=password],input[type=number],input[type=search],select,textarea{
+  background:#fff!important;border:1px solid var(--line-2)!important;border-radius:var(--rad)!important;
+  color:var(--ink)!important;font-size:13.5px!important;font-family:var(--sans)!important;
+  height:36px!important;box-sizing:border-box!important;vertical-align:middle!important;
+}
+textarea{height:auto!important;min-height:64px!important;line-height:1.5!important;resize:vertical!important}
+input::placeholder,textarea::placeholder{color:var(--ink-4)!important}
+input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):hover,
+input[type=text]:hover,input[type=password]:hover,input[type=number]:hover,select:hover,textarea:hover{border-color:#C0C4CC!important}
+input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):focus,
+input[type=text]:focus,input[type=password]:focus,input[type=number]:focus,select:focus,textarea:focus{
+  outline:none!important;border-color:var(--amber)!important;box-shadow:0 0 0 2px var(--amber-glow)!important;
+}
+select{
+  appearance:none;padding-right:30px;cursor:pointer;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23909399' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;
+}
+.toggle{position:relative;width:38px;height:20px;display:inline-block;flex-shrink:0}
 .toggle input{opacity:0;width:0;height:0}
-.slider{position:absolute;inset:0;background:#2d3148;border-radius:18px;cursor:pointer;transition:.2s}
-.slider::before{content:"";position:absolute;width:12px;height:12px;left:3px;bottom:3px;background:#64748b;border-radius:50%;transition:.2s}
-input:checked+.slider{background:#4f46e5}
-input:checked+.slider::before{background:#fff;transform:translateX(16px)}
-.btn{padding:6px 14px;border-radius:4px;border:none;cursor:pointer;font-size:13px;background:#2d3148;color:#e2e8f0}
-.btn-primary{background:#4f46e5;color:#fff}
-.btn-sm{padding:3px 9px;font-size:12px}
-.btn-danger{background:#7f1d1d;color:#fca5a5}
-.msg{padding:6px 10px;border-radius:4px;margin-bottom:8px;font-size:12px}
-.msg-ok{background:#14532d;color:#86efac}.msg-err{background:#7f1d1d;color:#fca5a5}
+.slider{position:absolute;inset:0;background:#DCDFE6;border:1px solid var(--line-2);border-radius:18px;cursor:pointer;transition:.22s}
+.slider::before{content:"";position:absolute;width:14px;height:14px;left:2px;top:2px;background:#fff;border-radius:50%;transition:.22s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+input:checked+.slider{background:var(--amber);border-color:var(--amber)}
+input:checked+.slider::before{transform:translateX(18px)}
+.btn{padding:9px 16px;border-radius:var(--rad);border:1px solid var(--line-2);cursor:pointer;font-size:13px;font-family:var(--sans);background:#fff;color:var(--ink-2);transition:.16s}
+.btn:hover{color:var(--amber);border-color:#C0C4CC;background:#fff}
+.btn-primary{background:var(--amber);color:#fff;border-color:var(--amber);font-weight:500}
+.btn-primary:hover{background:var(--amber-hover);border-color:var(--amber-hover);color:#fff}
+.btn-sm{padding:6px 12px;font-size:12px;border-radius:var(--rad)}
+.btn-danger{background:#fff;color:var(--crimson);border-color:rgba(245,108,108,.5)}
+.btn-danger:hover{background:var(--crimson);color:#fff;border-color:var(--crimson)}
+.msg{padding:9px 12px;border-radius:var(--rad);margin-bottom:10px;font-size:12.5px}
+.msg-ok{background:rgba(103,194,58,.1);color:var(--sage);border:1px solid rgba(103,194,58,.4)}
+.msg-err{background:rgba(245,108,108,.1);color:var(--crimson);border:1px solid rgba(245,108,108,.4)}
 /* 聊天 */
-.chat-wrap{display:flex;flex-direction:column;height:calc(100vh - 110px)}
-.chat-msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
-.msg-user{align-self:flex-end;background:#312e81;border-radius:12px 12px 2px 12px;padding:8px 12px;max-width:70%;font-size:13px}
-.msg-ai{align-self:flex-start;background:#1e293b;border-radius:12px 12px 12px 2px;padding:8px 12px;max-width:70%;font-size:13px}
-.msg-ts{font-size:10px;color:#475569;margin-top:3px}
-.chat-input{display:flex;gap:8px;padding:10px;border-top:1px solid #2d3148}
-.chat-input input{flex:1;background:#1a1d26;border:1px solid #2d3148;border-radius:6px;color:#e2e8f0;padding:8px 12px;font-size:13px}
+.chat-wrap{display:flex;flex-direction:column;height:calc(100vh - 116px)}
+.chat-msgs{flex:1;overflow-y:auto;padding:16px 8px;display:flex;flex-direction:column;gap:10px}
+.msg-user,.msg-ai{max-width:72%;font-size:13.5px;line-height:1.55;padding:10px 14px;animation:rise .3s ease both}
+.msg-user{align-self:flex-end;background:var(--amber);border:1px solid var(--amber);border-radius:14px 14px 4px 14px;color:#fff}
+.msg-ai{align-self:flex-start;background:var(--panel);border:1px solid var(--line-2);border-radius:14px 14px 14px 4px;color:var(--ink);box-shadow:0 4px 14px -10px rgba(0,0,0,.18)}
+.msg-ai::before{content:"";display:block;width:18px;height:2px;background:var(--amber);border-radius:2px;margin-bottom:6px;opacity:.7}
+.msg-ts{font-size:10.5px;color:var(--ink-2);margin-top:5px;font-family:var(--mono)}
+.msg-user .msg-ts{color:rgba(255,255,255,.8)}
+.chat-input{display:flex;gap:10px;padding:12px 4px 2px;border-top:1px solid var(--line)}
+.chat-input input{flex:1;background:#fff;border:1px solid var(--line-2);border-radius:var(--rad);color:var(--ink);padding:10px 14px;font-size:13.5px;font-family:var(--sans);transition:border-color .2s,box-shadow .2s}
+.chat-input input:hover{border-color:#C0C4CC}
+.chat-input input:focus{outline:none;border-color:var(--amber);box-shadow:0 0 0 2px var(--amber-glow)}
 /* 意识流 */
-.tl-row{display:grid;grid-template-columns:120px 64px 1fr 120px;gap:8px;padding:7px 0;border-bottom:1px solid #1e2130;font-size:12px;align-items:start}
-.tl-scroll{max-height:calc(100vh - 320px);min-height:160px;overflow-y:auto}
+.tl-row{display:grid;grid-template-columns:120px 70px 1fr 120px;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:12.5px;align-items:start}
+.tl-scroll{max-height:calc(100vh - 330px);min-height:160px;overflow-y:auto;padding-right:6px}
 .tl-row:last-child{border-bottom:none}
-.tag{display:inline-block;padding:1px 6px;border-radius:10px;font-size:11px}
-.tag-speak{background:#1e3a5f;color:#93c5fd}
-.tag-silent{background:#1f2937;color:#6b7280}
-.tag-look{background:#1a2e1a;color:#86efac}
-.thought{color:#94a3b8;font-style:italic;font-size:11px;margin-top:2px}
-.ts{color:#475569}
+.tag{display:inline-block;padding:2px 9px;border-radius:3px;font-size:10.5px;font-family:var(--mono);letter-spacing:.03em;border:1px solid transparent;font-weight:500}
+.tag-speak{background:rgba(64,158,255,.1);color:var(--amber);border-color:rgba(64,158,255,.3)}
+.tag-silent{background:#F4F4F5;color:var(--ink-3);border-color:var(--line-2)}
+.tag-look{background:rgba(103,194,58,.1);color:var(--sage);border-color:rgba(103,194,58,.3)}
+.thought{color:var(--ink-2);font-style:italic;font-size:11.5px;margin-top:3px;font-family:var(--serif)}
+.ts{color:var(--ink-2);font-family:var(--mono);font-size:11.5px}
 /* 情绪 */
-.emo-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-.emo-row label{width:80px;flex-shrink:0;color:#94a3b8;font-size:12px;text-align:right}
-.bar-bg{flex:1;height:7px;background:#2d3148;border-radius:4px;overflow:hidden}
-.bar{height:100%;border-radius:4px;transition:width .4s}
+.emo-row{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+.emo-row label{width:86px;flex-shrink:0;color:var(--ink-2);font-size:11px;text-align:right;font-family:var(--mono);text-transform:uppercase;letter-spacing:.05em}
+.bar-bg{flex:1;height:8px;background:#EBEEF5;border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.bar{height:100%;border-radius:5px;transition:width .5s cubic-bezier(.2,.7,.2,1)}
 /* 权限 */
-.perm-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #1e2130}
+.perm-row{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--line);gap:12px}
 .perm-row:last-child{border-bottom:none}
 /* 世界书 */
-.wb-entry{border:1px solid #2d3148;border-radius:6px;padding:10px;margin-bottom:8px}
-.wb-entry-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.wb-entry{border:1px solid var(--line-2);border-radius:var(--rad);padding:14px;margin-bottom:10px;background:#fff}
+.wb-entry-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.empty{color:#475569;font-size:12px;padding:8px 0}
-.pencil-btn{background:none;border:none;color:#64748b;font-size:15px;cursor:pointer;padding:2px 4px;border-radius:3px;transition:.15s}
-.pencil-btn:hover{color:#e2e8f0;background:#2d3148}
-.rename-pop{position:absolute;left:0;top:calc(100% + 4px);background:#1a1d26;border:1px solid #4f46e5;border-radius:6px;padding:8px;display:flex;gap:6px;align-items:center;z-index:100;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.4)}
-.toast{position:fixed;top:64px;left:50%;transform:translateX(-50%);padding:10px 22px;border-radius:6px;font-size:13px;z-index:9999;pointer-events:none;transition:opacity .3s}
-.toast-ok{background:#14532d;color:#86efac;border:1px solid #166534}
-.toast-err{background:#7f1d1d;color:#fca5a5;border:1px solid #991b1b}
+.empty{color:var(--ink-4);font-size:13px;padding:12px 2px}
+.pencil-btn{background:none;border:none;color:var(--ink-3);font-size:15px;cursor:pointer;padding:3px 6px;border-radius:var(--rad);transition:.15s}
+.pencil-btn:hover{color:var(--amber);background:#F4F4F5}
+.rename-pop{position:absolute;left:0;top:calc(100% + 5px);background:var(--panel);border:1px solid var(--amber);border-radius:var(--rad);padding:10px;display:flex;gap:6px;align-items:center;z-index:100;white-space:nowrap;box-shadow:0 8px 24px -8px rgba(0,0,0,.18)}
+.toast{position:fixed;top:70px;left:50%;transform:translateX(-50%);padding:11px 24px;border-radius:var(--rad);font-size:13px;z-index:9999;pointer-events:none;animation:toastIn .3s ease both}
+@keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(-8px)}to{opacity:1;transform:translateX(-50%)}}
+.toast-ok{background:var(--sage);color:#fff;border:1px solid var(--sage)}
+.toast-err{background:var(--crimson);color:#fff;border:1px solid var(--crimson)}
 /* 日志 */
-.log-row{display:grid;grid-template-columns:70px 70px 80px 1fr;gap:8px;padding:4px 0;border-bottom:1px solid #1e2130;font-size:12px;align-items:start}
-.log-row pre{font-size:12px;line-height:1.4}
-.log-ts{color:#475569;font-family:monospace}
-.log-lvl{font-weight:600;font-size:11px;text-align:center}
-.log-mod{color:#94a3b8;font-size:11px}
-.log-msg{word-break:break-word;color:#cbd5e1}
-.log-debug .log-lvl{color:#64748b}
-.log-info .log-lvl{color:#60a5fa}
-.log-warning .log-lvl{color:#fbbf24}
-.log-warning .log-msg{color:#fde68a}
-.log-error .log-lvl{color:#f87171}
-.log-error .log-msg{color:#fca5a5}
-.log-critical .log-lvl{color:#f87171}
+.log-row{display:grid;grid-template-columns:74px 70px 88px 1fr;gap:10px;padding:6px 8px;border-bottom:1px solid var(--line);font-size:12px;align-items:start;border-left:3px solid transparent}
+.log-row pre{font-size:12px;line-height:1.45}
+.log-ts{color:var(--ink-2);font-family:var(--mono)}
+.log-lvl{font-weight:600;font-size:10.5px;text-align:center;font-family:var(--mono);letter-spacing:.03em;border-radius:3px;padding:1px 0}
+.log-mod{color:var(--ink-2);font-size:11px;font-family:var(--mono)}
+.log-msg{word-break:break-word;color:var(--ink)}
+.log-debug{border-left-color:var(--ink-4)} .log-debug .log-lvl{color:var(--ink-4)}
+.log-info{border-left-color:var(--amber)} .log-info .log-lvl{color:var(--amber);background:rgba(64,158,255,.1)}
+.log-warning{border-left-color:var(--gold)} .log-warning .log-lvl{color:var(--gold);background:rgba(230,162,60,.1)} .log-warning .log-msg{color:var(--gold)}
+.log-error{border-left-color:var(--crimson)} .log-error .log-lvl{color:var(--crimson);background:rgba(245,108,108,.1)} .log-error .log-msg{color:var(--crimson)}
+.log-critical{border-left-color:var(--crimson)} .log-critical .log-lvl{color:#fff;background:var(--crimson)}
+/* 滚动条 / 选中 / 内联冷色同化 */
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#DCDFE6;border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:#C0C4CC}
+::selection{background:var(--amber);color:#fff}
+code{font-family:var(--mono);font-size:11.5px;background:rgba(64,158,255,.1);color:var(--amber);padding:1px 6px;border-radius:3px}
+[style*="#818cf8"]{color:var(--amber)!important}
+[style*="#93c5fd"]{color:var(--amber)!important}
+[style*="#475569"]{color:var(--ink-3)!important}
+[style*="#64748b"]{color:var(--ink-3)!important}
+[style*="#94a3b8"]{color:var(--ink-2)!important}
+[style*="#f87171"]{color:var(--crimson)!important}
+[style*="#fca5a5"]{color:var(--crimson)!important}
+[style*="#86efac"]{color:var(--sage)!important}
+[style*="#22c55e"]{color:var(--sage)!important}
+[style*="background:#f1f5f9"]{background:#F4F4F5!important;color:var(--ink-2)!important;border:1px solid var(--line-2)!important;border-radius:var(--rad)!important}
+[style*="background:#0f172a"]{background:#F4F4F5!important}
+/* 右下角版本水印 —— 用于排查浏览器缓存（确认加载的是最新文件） */
+.build-stamp{position:fixed;right:10px;bottom:6px;font-family:var(--mono);font-size:10px;color:var(--ink-4);background:rgba(255,255,255,.7);padding:2px 7px;border-radius:3px;z-index:9998;pointer-events:none;border:1px solid var(--line)}
 </style>
 </head>
 <body>
@@ -94,12 +253,16 @@ input:checked+.slider::before{background:#fff;transform:translateX(16px)}
   <!-- 全局 toast：固定在顶部居中，所有 Tab 保存/操作提示共用 -->
   <div v-if="toast.text" class="toast" :class="toast.ok?'toast-ok':'toast-err'">{{toast.text}}</div>
   <header>
-    <span style="font-size:18px">⚙</span>
-    <h1>newTouch 管理平台</h1>
-    <span style="margin-left:auto;font-size:11px;color:#475569">loopback only</span>
+    <span class="brand-mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+    </span>
+    <h1>newTouch<span class="sub">陪伴体观测台</span></h1>
+    <span class="live-dot">LOOPBACK · 127.0.0.1</span>
   </header>
   <nav>
-    <button v-for="t in tabs" :class="{active:tab===t.id}" @click="tab=t.id">{{t.label}}</button>
+    <button v-for="t in tabs" :class="{active:tab===t.id}" @click="tab=t.id">
+      <span class="tab-ico" v-html="t.icon"></span>{{t.label}}
+    </button>
   </nav>
   <div class="content">
 
@@ -168,7 +331,7 @@ input:checked+.slider::before{background:#fff;transform:translateX(16px)}
           <div style="display:grid;grid-template-columns:120px 130px 1fr 100px;gap:8px;font-size:11px;color:#475569;padding:4px 0;font-weight:600">
             <div>时间</div><div>工具</div><div>参数</div><div>结果</div>
           </div>
-          <div v-for="a in audit" style="display:grid;grid-template-columns:120px 130px 1fr 100px;gap:8px;padding:6px 0;border-bottom:1px solid #1e2130;font-size:12px">
+          <div v-for="a in audit" style="display:grid;grid-template-columns:120px 130px 1fr 100px;gap:8px;padding:6px 0;border-bottom:1px solid rgba(30,64,110,.12);font-size:12px">
             <div class="ts">{{a.timestamp?.slice(0,16).replace('T',' ')}}</div>
             <div>{{a.tool}}</div>
             <div>{{JSON.stringify(a.args)}}</div>
@@ -180,8 +343,16 @@ input:checked+.slider::before{background:#fff;transform:translateX(16px)}
     </div>
 
     <!-- 结构化配置 -->
-    <div v-if="tab==='config'">
-      <div class="card" v-for="sec in schema">
+    <div v-if="tab==='config'" class="config-layout">
+      <!-- 侧边导航：配置分区快速跳转 + 高亮当前可视区 -->
+      <aside class="config-aside">
+        <div class="config-aside-hd">配置分区</div>
+        <a v-for="(sec,i) in schema" :key="sec.section"
+           class="config-aside-item" :class="{active:activeSec===i}"
+           @click="scrollToSec(i)" :title="sec.section">{{sec.section}}</a>
+      </aside>
+      <div class="config-main">
+      <div class="card config-card" v-for="(sec,i) in schema" :key="sec.section" :data-sec="i" ref="cfgCards">
         <div class="card-title open" :class="{open:openSecs[sec.section]}" @click="openSecs[sec.section]=!openSecs[sec.section]">{{sec.section}}</div>
         <div class="card-body" :class="{open:openSecs[sec.section]}">
           <div class="field-row" v-for="f in sec.fields">
@@ -201,7 +372,7 @@ input:checked+.slider::before{background:#fff;transform:translateX(16px)}
               <option v-for="n in presetList" :value="n">{{n}}</option>
             </select>
             <!-- 说明信息（只读，不可编辑） -->
-            <div v-else-if="f.type==='info'" style="padding:8px 12px;background:#f1f5f9;border-radius:6px;color:#475569;font-size:12px;line-height:1.5">
+            <div v-else-if="f.type==='info'" class="info-box">
               {{f.help || f.label}}
             </div>
             <label v-else-if="f.type==='toggle'" class="toggle">
@@ -223,6 +394,7 @@ input:checked+.slider::before{background:#fff;transform:translateX(16px)}
         <button class="btn btn-primary" @click="saveCfg">保存所有配置</button>
         <span style="margin-left:10px;font-size:11px;color:#64748b">保存后多数配置即时生效；标「需重启」的项改完需重启 main.py。</span>
       </div>
+      </div>
     </div>
 
     <!-- 权限 -->
@@ -243,8 +415,8 @@ input:checked+.slider::before{background:#fff;transform:translateX(16px)}
 
     <!-- 角色卡 -->
     <div v-if="tab==='card'">
-      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
-        <select v-model="cardName" @change="loadCard" style="width:140px">
+      <div class="tb-bar">
+        <select v-model="cardName" @change="loadCard" class="tb-sel">
           <option v-for="c in cardList" :value="c.id">{{c.name}}</option>
         </select>
         <span style="position:relative;display:inline-flex">
@@ -252,12 +424,12 @@ input:checked+.slider::before{background:#fff;transform:translateX(16px)}
                   @click="openRename">✎</button>
           <div class="rename-pop" v-if="renaming" @click.stop>
             <input v-model="cardRenameVal" placeholder="新名称" @keydown.enter="renameCard"
-                   ref="renameInput" style="width:130px">
+                   ref="renameInput" class="tb-in">
             <button class="btn btn-primary btn-sm" @click="renameCard" :disabled="!cardRenameVal.trim()">确定</button>
             <button class="btn btn-sm" @click="renaming=false">取消</button>
           </div>
         </span>
-        <input v-model="cardNewName" placeholder="新建角色名" style="width:130px;margin-left:8px">
+        <input v-model="cardNewName" placeholder="新建角色名" class="tb-in" style="margin-left:8px">
         <button class="btn btn-primary btn-sm" @click="createCard">新建</button>
         <button class="btn btn-danger btn-sm" v-if="cardName" @click="deleteCard" style="margin-left:auto">删除当前角色</button>
       </div>
@@ -268,7 +440,7 @@ input:checked+.slider::before{background:#fff;transform:translateX(16px)}
           <input v-else v-model="cardData[f.k]">
         </div>
         <!-- 世界书绑定 -->
-        <div style="border-top:1px solid #2d3148;margin-top:10px;padding-top:10px">
+        <div style="border-top:1px solid rgba(30,64,110,.14);margin-top:10px;padding-top:10px">
           <div style="font-size:12px;color:#64748b;margin-bottom:8px">世界书绑定（可绑多个，激活时合并扫描）</div>
           <div class="field-row">
             <label>主世界书</label>
@@ -356,11 +528,11 @@ input:checked+.slider::before{background:#fff;transform:translateX(16px)}
 
     <!-- 预设 -->
     <div v-if="tab==='preset'">
-      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
-        <select v-model="presetName" @change="loadPreset" style="width:160px">
+      <div class="tb-bar">
+        <select v-model="presetName" @change="loadPreset" class="tb-sel">
           <option v-for="n in presetList" :value="n">{{n}}</option>
         </select>
-        <input v-model="presetNewName" placeholder="新建预设名" style="width:120px">
+        <input v-model="presetNewName" placeholder="新建预设名" class="tb-in">
         <button class="btn btn-primary btn-sm" @click="createPreset">新建</button>
         <button class="btn btn-danger btn-sm" v-if="presetName" @click="deletePreset">删除</button>
       </div>
@@ -386,11 +558,11 @@ input:checked+.slider::before{background:#fff;transform:translateX(16px)}
 
     <!-- 世界书 -->
     <div v-if="tab==='wb'">
-      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
-        <select v-model="wbName" @change="loadWb" style="width:160px">
+      <div class="tb-bar">
+        <select v-model="wbName" @change="loadWb" class="tb-sel">
           <option v-for="n in wbList" :value="n">{{n}}</option>
         </select>
-        <input v-model="wbNewName" placeholder="新建名称" style="width:120px">
+        <input v-model="wbNewName" placeholder="新建名称" class="tb-in">
         <button class="btn btn-sm btn-primary" @click="createWb">新建</button>
         <button class="btn btn-danger btn-sm" v-if="wbName" @click="deleteWb">删除</button>
       </div>
@@ -445,11 +617,11 @@ input:checked+.slider::before{background:#fff;transform:translateX(16px)}
 
     <!-- 语音库（多文件 + 角色绑定） -->
     <div v-if="tab==='voices'">
-      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
-        <select v-model="vlName" @change="loadVoiceLib" style="width:160px">
+      <div class="tb-bar">
+        <select v-model="vlName" @change="loadVoiceLib" class="tb-sel">
           <option v-for="n in vlList" :value="n">{{n}}</option>
         </select>
-        <input v-model="vlNewName" placeholder="新建库名" style="width:120px">
+        <input v-model="vlNewName" placeholder="新建库名" class="tb-in">
         <button class="btn btn-sm btn-primary" @click="createVoiceLib">新建</button>
         <button class="btn btn-danger btn-sm" v-if="vlName && vlName!=='library'" @click="delVoiceLib">删除</button>
       </div>
@@ -475,7 +647,7 @@ input:checked+.slider::before{background:#fff;transform:translateX(16px)}
           <div style="display:flex;justify-content:space-between;margin-bottom:10px;align-items:center">
             <span style="font-size:12px;color:#64748b">情绪档 — 主脑回复时按 &lt;emo:情绪&gt; 标签自动选参考音频</span>
             <span style="display:flex;gap:6px">
-              <input v-model="vlNewEmo" placeholder="情绪名(如 happy)" style="width:130px">
+              <input v-model="vlNewEmo" placeholder="情绪名(如 happy)" class="tb-in">
               <button class="btn btn-sm btn-primary" @click="addVlEmo">+ 新增情绪</button>
             </span>
           </div>
@@ -486,7 +658,7 @@ input:checked+.slider::before{background:#fff;transform:translateX(16px)}
               <button class="btn btn-danger btn-sm" @click="delete vlDoc.emotions[emo]">删除情绪</button>
             </div>
             <!-- 多参考音频：兼容旧格式自动转换 -->
-            <div v-for="(ref, idx) in getEmoRefs(emo)" :key="idx" style="border-left:2px solid #475569;padding-left:12px;margin-bottom:8px">
+            <div v-for="(ref, idx) in getEmoRefs(emo)" :key="idx" style="border-left:2px solid var(--line-2);padding-left:12px;margin-bottom:8px">
               <div style="display:flex;justify-content:space-between;margin-bottom:6px">
                 <span style="font-size:11px;color:#94a3b8">参考音频 {{idx + 1}}</span>
                 <button class="btn btn-danger btn-sm" style="padding:2px 8px;font-size:11px" @click="removeEmoRef(emo, idx)">删除</button>
@@ -517,8 +689,8 @@ input:checked+.slider::before{background:#fff;transform:translateX(16px)}
 
     <!-- 立绘库（按角色存，<face:表情> 标签驱动差分） -->
     <div v-if="tab==='sprites'">
-      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
-        <select v-model="spChar" @change="loadSprites" style="width:160px">
+      <div class="tb-bar">
+        <select v-model="spChar" @change="loadSprites" class="tb-sel">
           <option v-for="c in cardList" :value="c.id">{{c.name}}</option>
         </select>
         <span style="font-size:12px;color:#64748b" v-if="spChar">立绘库存于 data/characters/{{spChar}}/sprites/</span>
@@ -528,7 +700,7 @@ input:checked+.slider::before{background:#fff;transform:translateX(16px)}
           <div style="display:flex;justify-content:space-between;margin-bottom:10px;align-items:center">
             <span style="font-size:12px;color:#64748b">表情档 — 主脑回复时按 &lt;face:表情&gt; 标签切换立绘。与语音库 &lt;emo:&gt; 独立，可不同。</span>
             <span style="display:flex;gap:6px">
-              <input v-model="spNewEmo" placeholder="表情名(如 得意/thinking)" style="width:150px">
+              <input v-model="spNewEmo" placeholder="表情名(如 得意/thinking)" class="tb-in w220">
               <button class="btn btn-sm btn-primary" @click="addSpEmo">+ 新增表情</button>
             </span>
           </div>
@@ -601,10 +773,10 @@ input:checked+.slider::before{background:#fff;transform:translateX(16px)}
           到点的日程会走主动路径提醒（措辞/时机由 ta 结合人设+情绪决定）。AI 可通过工具管理（需权限页授权），这里也可手动增删改。
         </p>
         <!-- 新建 -->
-        <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
-          <input v-model="newSch.content" placeholder="提醒内容（如：该吃药了）" style="width:200px">
-          <input v-model="newSch.trigger_at" placeholder="时间（2026-06-29T19:00:00 或 明天10点）" style="width:240px">
-          <select v-model="newSch.repeat" style="width:90px">
+        <div class="tb-bar">
+          <input v-model="newSch.content" placeholder="提醒内容（如：该吃药了）" class="tb-in w220">
+          <input v-model="newSch.trigger_at" placeholder="时间（2026-06-29T19:00:00 或 明天10点）" class="tb-in w220">
+          <select v-model="newSch.repeat" class="tb-sel w90">
             <option value="none">单次</option>
             <option value="daily">每天</option>
           </select>
@@ -668,27 +840,28 @@ input:checked+.slider::before{background:#fff;transform:translateX(16px)}
     </div>
 
   </div>
+  <div class="build-stamp">UI build · el-ui · 20260629f</div>
 </div>
-
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 <script>
 const { createApp, ref, reactive, computed, onMounted, nextTick, watch } = Vue
 
 createApp({
   setup() {
+    const ico = p => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'+p+'</svg>'
     const tabs = [
-      {id:'chat',label:'聊天'},
-      {id:'observe',label:'观测'},
-      {id:'config',label:'配置'},
-      {id:'perm',label:'权限'},
-      {id:'card',label:'角色卡'},
-      {id:'preset',label:'预设'},
-      {id:'wb',label:'世界书'},
-      {id:'voices',label:'语音库'},
-      {id:'sprites',label:'立绘库'},
-      {id:'tools',label:'工具'},
-      {id:'schedules',label:'日程'},
-      {id:'logs',label:'日志'},
+      {id:'chat',label:'聊天',icon:ico('<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>')},
+      {id:'observe',label:'观测',icon:ico('<path d="M1 12s4-7.5 11-7.5S23 12 23 12s-4 7.5-11 7.5S1 12 1 12z"/><circle cx="12" cy="12" r="3"/>')},
+      {id:'config',label:'配置',icon:ico('<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>')},
+      {id:'perm',label:'权限',icon:ico('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>')},
+      {id:'card',label:'角色卡',icon:ico('<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>')},
+      {id:'preset',label:'预设',icon:ico('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/>')},
+      {id:'wb',label:'世界书',icon:ico('<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>')},
+      {id:'voices',label:'语音库',icon:ico('<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/>')},
+      {id:'sprites',label:'立绘库',icon:ico('<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>')},
+      {id:'tools',label:'工具',icon:ico('<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>')},
+      {id:'schedules',label:'日程',icon:ico('<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>')},
+      {id:'logs',label:'日志',icon:ico('<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>')},
     ]
     const tab = ref('chat')
     const toast = reactive({text:'', ok:true})
@@ -701,7 +874,7 @@ createApp({
     watch(tab, t => {
       if (t==='chat') loadChat()
       if (t==='observe') { loadState(); loadCons(); }
-      if (t==='config') { loadCfg(); loadCardList(); loadPresetList(); }
+      if (t==='config') { loadCfg(); loadCardList(); loadPresetList(); activeSec.value=0 }
       if (t==='perm') loadPerms()
       if (t==='card') loadCardList()
       if (t==='preset') loadPresetList()
@@ -805,6 +978,9 @@ createApp({
     const cfgRaw = ref({})
     const schema = ref([])
     const openSecs = reactive({})
+    const activeSec = ref(0)
+    const cfgCards = ref(null)
+    let _cfgScroll = null
     async function loadCfg() {
       const [raw, sc] = await Promise.all([
         fetch('/api/config').then(r=>r.json()),
@@ -813,6 +989,40 @@ createApp({
       cfgRaw.value = raw
       schema.value = sc
       sc.forEach(s => { if (!(s.section in openSecs)) openSecs[s.section]=true })
+    }
+    // 点击侧边项 → 滚到对应卡片并展开
+    function scrollToSec(i) {
+      activeSec.value = i
+      const sc = document.querySelector('.content')
+      const el = sc && sc.querySelector('.config-card[data-sec="'+i+'"]')
+      if (!sc || !el) return
+      const key = schema.value[i] && schema.value[i].section
+      if (key) openSecs[key] = true
+      // 手动算偏移并设滚动容器 scrollTop（scrollIntoView 在嵌套 overflow 容器里不可靠）
+      // el 相对 .content 的偏移 = offsetTop 链累加到 .content
+      let off = 0, node = el
+      while (node && node !== sc) { off += node.offsetTop; node = node.offsetParent }
+      sc.scrollTo({ top: Math.max(0, off - 12), behavior: 'smooth' })
+    }
+    // 监听配置卡片滚动 → 高亮当前可视分区
+    function _onCfgScroll() {
+      const sc = document.querySelector('.content')
+      if (!sc) return
+      const cards = sc.querySelectorAll('.config-card')
+      if (!cards.length) return
+      const top = sc.scrollTop
+      let cur = 0
+      cards.forEach((c, i) => {
+        let off = 0, node = c
+        while (node && node !== sc) { off += node.offsetTop; node = node.offsetParent }
+        if (off - 20 <= top) cur = i
+      })
+      activeSec.value = cur
+    }
+    function _bindCfgScroll() {
+      if (_cfgScroll) return
+      _cfgScroll = _onCfgScroll
+      document.querySelector('.content')?.addEventListener('scroll', _onCfgScroll, {passive:true})
     }
     function _getDeep(obj, path) {
       return path.split('.').reduce((o,k)=>o&&typeof o==='object'?o[k]:undefined, obj)
@@ -1325,6 +1535,7 @@ createApp({
         if (tab.value !== 'logs' || !logAuto.value) return
         await loadLogs()
       }, 2000)
+      _bindCfgScroll()   // 配置页侧边导航滚动高亮
     })
 
     return {
@@ -1332,7 +1543,7 @@ createApp({
       chatMsgs, chatInput, msgBox, loadChat, sendChat,
       cons, consFilter, audit, liveState, emoKeys, emoPct, emoColor, loadCons, loadAudit, loadState,
       logs, logLevel, logModule, logAuto, logModules, loadLogs, clearLogView,
-      cfgRaw, schema, openSecs, getCfgVal, setCfgVal, saveCfg,
+      cfgRaw, schema, openSecs, activeSec, cfgCards, scrollToSec, getCfgVal, setCfgVal, saveCfg,
       switchCharacter, switchPreset, setPresetEnabled,
       perms, permLabel, permDesc, savePerms,
       toolsList, loadTools, toggleTool,
