@@ -9,8 +9,10 @@ from __future__ import annotations
 import asyncio
 import json
 import random
+import re
 import time
 from datetime import datetime, timedelta
+from difflib import SequenceMatcher
 
 from .character import CharacterCard, WorldInfoManager, load_preset
 from .cognition import Cognition
@@ -568,6 +570,42 @@ class Orchestrator:
         if len(self._recent_inner) > cap:
             self._recent_inner = self._recent_inner[-cap:] if cap > 0 else []
 
+    def _is_repeat_of_recent(self, reply: str) -> bool:
+        """检查 reply 是否和最近主动开口说过的话高度相似（去重兜底）。
+
+        从 _recent_inner 里提取"刚开口说了「...」"的文本，和 reply 比相似度。
+        相似度 >= 阈值（默认 0.6）视为重复。只比近期主动发言，不比反应回复
+        （反应回复是回应具体话题，重复无妨）。
+        """
+        if not reply or not self._recent_inner:
+            return False
+        threshold = self._cfg.get("proactive.repeat_similarity_threshold", 0.6)
+        reply_clean = self._normalize_for_compare(reply)
+        if not reply_clean:
+            return False
+        for entry in self._recent_inner:
+            if "刚开口说了" not in entry:
+                continue
+            # 提取「」内的内容
+            m = self._EXTRACT_SPOKEN.search(entry)
+            if not m:
+                continue
+            prev = self._normalize_for_compare(m.group(1))
+            if not prev:
+                continue
+            ratio = SequenceMatcher(None, reply_clean, prev).ratio()
+            if ratio >= threshold:
+                log.info("主动发言去重：与近期发言相似度 %.2f >= %.2f，压回 silent", ratio, threshold)
+                return True
+        return False
+
+    _EXTRACT_SPOKEN = re.compile(r"刚开口说了「(.*?)」")
+
+    @staticmethod
+    def _normalize_for_compare(s: str) -> str:
+        """归一化文本用于相似度比较：去标点/空白/引号，小写。"""
+        return re.sub(r"[\s\W_]+", "", (s or "")).lower()
+
     async def _handle_proactive(self, event: Event) -> None:
         self._state.tick()
 
@@ -708,6 +746,14 @@ class Orchestrator:
         if not allowed:
             self._log.record(trigger="心跳", action="silent", thought=thought,
                              emotion=self._state.snapshot(), gate=f"末层兜底:{reason}")
+            self._record_inner("silent", thought)
+            return
+
+        # 去重兜底：和最近主动开口说过的话高度相似 → 压回 silent（避免重复打扰）
+        if self._is_repeat_of_recent(reply):
+            self._log.record(trigger="心跳", action="silent", thought=thought,
+                             text=reply, emotion=self._state.snapshot(),
+                             gate="和刚说过的话重复，忍住没说")
             self._record_inner("silent", thought)
             return
 

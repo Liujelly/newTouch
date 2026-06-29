@@ -85,6 +85,7 @@ proactive:
   clinginess: 0.5
   ignored_grace_seconds: 300
   recent_inner_max: 5
+  repeat_similarity_threshold: 0.6  # 主动发言与近期发言相似度>=此值则压回silent(去重兜底)
 # 日程/待办（架构第14章）：到点投 SCHEDULE 事件走主动路径提醒。AI 用工具管理需授权
 schedule:
   enabled: true
