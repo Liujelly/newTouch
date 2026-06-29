@@ -48,7 +48,10 @@ _ACTION_PATTERNS = {
     "speak": rf"{_BRK_OPEN}\s*[决決]定\s*[：:]\s*(?:开口|開口|说|說|发言|發言){_BRK_CLOSE}",
     "silent": rf"{_BRK_OPEN}\s*[决決]定\s*[：:]\s*(?:沉默|沈黙|不说|不說|保持安静|保持安靜){_BRK_CLOSE}",
     "look": rf"{_BRK_OPEN}\s*[决決]定\s*[：:]\s*(?:看看|看一眼|观察|觀察)(?:他|她|ta)?{_BRK_CLOSE}",
+    "retry_later": rf"{_BRK_OPEN}\s*[决決]定\s*[：:]\s*(?:稍后|稍後|晚点|晚點|改天|再试|再試)(?:再说|再說|提醒|提)?{_BRK_CLOSE}",
 }
+# retry_later 的延后分钟数：决策标记后跟「(10分钟)」「10min」「10分钟后」等
+_RETRY_MINUTES_RE = re.compile(r"(\d{1,3})\s*(?:分钟|分鐘|min|分钟後|分钟后)")
 # 兜底：任意形态的决策标记（用于把残留标记从 thought 里清掉，含其后紧跟的翻译括号）。
 _ANY_DECISION_MARKER = re.compile(
     rf"{_BRK_OPEN}\s*[决決]定\s*[：:][^\]］】]*{_BRK_CLOSE}\s*(?:[（(][^）)]*[）)])?"
@@ -127,6 +130,16 @@ def _parse_monologue_cot(raw: str) -> dict:
         if text:
             text = re.sub(r'<emo:\w+>', '', text).strip()
 
+    # retry_later：从决策标记后/思考里提取延后分钟数（默认 10）
+    retry_minutes = 10
+    if action == "retry_later":
+        rm = _RETRY_MINUTES_RE.search(remaining or thought or raw)
+        if rm:
+            try:
+                retry_minutes = max(1, min(int(rm.group(1)), 120))
+            except (TypeError, ValueError):
+                retry_minutes = 10
+
     return {
         "thought": thought,
         "action": action,
@@ -134,6 +147,7 @@ def _parse_monologue_cot(raw: str) -> dict:
         "emotion": emotion,
         "face": face,
         "emotion_delta": {},  # CoT 模式下情绪增量单独判断
+        "retry_minutes": retry_minutes,
     }
 
 
@@ -171,6 +185,14 @@ def _parse_monologue(raw: str, use_cot: bool = False) -> dict:
     delta = _parse_emotion_delta(data.get("emotion_delta"))
     if action == "look":
         return {"thought": thought, "action": "look", "text": "", "emotion": emotion, "face": face, "emotion_delta": delta}
+    if action == "retry_later":
+        retry_minutes = 10
+        try:
+            retry_minutes = max(1, min(int(data.get("retry_minutes", 10)), 120))
+        except (TypeError, ValueError):
+            retry_minutes = 10
+        return {"thought": thought, "action": "retry_later", "text": "", "emotion": emotion,
+                "face": face, "emotion_delta": delta, "retry_minutes": retry_minutes}
     if action != "speak" or not text:
         return {"thought": thought, "action": "silent", "text": "", "emotion": emotion, "face": face, "emotion_delta": delta}
     return {"thought": thought, "action": "speak", "text": text, "emotion": emotion, "face": face, "emotion_delta": delta}

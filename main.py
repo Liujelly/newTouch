@@ -99,6 +99,12 @@ async def main() -> None:
     from core.tools.vision_tools import register_vision_tools
     register_vision_tools(vision, cfg)
 
+    # 注册日程管理工具 add/list/mark_done/update/delete（开关 tools.*，另受权限页授权）
+    from core.perception.schedule import ScheduleStore, Scheduler
+    schedule_store = ScheduleStore(cfg.char_data_dir())
+    from core.tools.schedule_tools import register_schedule_tools
+    register_schedule_tools(schedule_store, cfg)
+
     # 立绘浮窗：起 face 广播 TCP server，把立绘表情推给独立浮窗进程（开关 sprite.enabled）
     sprite_proc = None
     if cfg.get("sprite.enabled", False):
@@ -129,6 +135,12 @@ async def main() -> None:
         log.info("立绘浮窗已启动: http://%s:%s", sprite_host, sprite_port)
 
     vision_task = asyncio.create_task(vision.start())
+
+    # 日程调度器（开关 schedule.enabled，到点投 SCHEDULE 事件走主动路径提醒）
+    scheduler = None
+    if cfg.get("schedule.enabled", True):
+        scheduler = Scheduler(schedule_store, orch.enqueue, cfg)
+        scheduler.start()
 
     orch_task = asyncio.create_task(orch.run())
     heartbeat = Heartbeat(cfg, orch.enqueue)
@@ -176,6 +188,8 @@ async def main() -> None:
     finally:
         vision.stop()
         heartbeat.stop()
+        if scheduler is not None:
+            await scheduler.stop()
         await orch.shutdown()
         # 管理平台：设 should_exit 让 uvicorn 优雅自关（走完 lifespan shutdown），
         # 再 await 它正常结束。不要直接 cancel()——那会在 starlette lifespan 的

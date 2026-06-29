@@ -85,6 +85,11 @@ proactive:
   clinginess: 0.5
   ignored_grace_seconds: 300
   recent_inner_max: 5
+# 日程/待办（架构第14章）：到点投 SCHEDULE 事件走主动路径提醒。AI 用工具管理需授权
+schedule:
+  enabled: true
+  check_interval_seconds: 30  # 调度器扫描间隔（秒）
+  bypass_hourly_cap: true     # 日程提醒绕过每小时主动上限（仍受勿扰时段约束）
 ai_permissions:
   allow_adjust_frequency: false
   allow_switch_preset: false
@@ -131,6 +136,11 @@ tools:
   memory_search: true         # 检索关于用户的长久记忆（需 memory.enabled=true）
   web_search: false           # 联网搜索实时信息（默认关，开了才注册）
   look: true                  # 看一眼摄像头画面（需 perception.vision.enabled=true）
+  add_schedule: true          # 新建提醒/待办（另受 allow_manage_schedules 授权）
+  list_schedules: true        # 查看待办日程
+  mark_done: true             # 标记日程完成
+  update_schedule: true       # 修改日程
+  delete_schedule: true       # 删除日程
   set_speaking_frequency: true  # 调整主动说话频率（另受权限页授权）
   toggle_vision: true         # 开关视觉感知（另受权限页授权）
   switch_preset: true         # 切换预设配置（另受权限页授权）

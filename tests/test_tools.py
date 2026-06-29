@@ -24,6 +24,7 @@ def test_catalog_completeness():
     """catalog 覆盖所有已知工具，字段齐全。"""
     names = {t["name"] for t in TOOL_CATALOG}
     expected = {"get_weather", "memory_search", "web_search", "look",
+                "add_schedule", "list_schedules", "mark_done", "update_schedule", "delete_schedule",
                 "set_speaking_frequency", "toggle_vision", "switch_preset", "get_my_status"}
     assert names == expected, f"catalog 工具集不符：缺 {expected - names}，多 {names - expected}"
     for t in TOOL_CATALOG:
@@ -31,7 +32,7 @@ def test_catalog_completeness():
     # catalog_summary 返回浅拷贝
     s = catalog_summary()
     assert s[0] is not TOOL_CATALOG[0], "summary 应是浅拷贝"
-    print("✅ catalog 覆盖 8 个工具、字段齐全、summary 浅拷贝")
+    print(f"✅ catalog 覆盖 {len(TOOL_CATALOG)} 个工具、字段齐全、summary 浅拷贝")
 
 
 def test_default_values():

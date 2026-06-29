@@ -255,6 +255,15 @@ def get_config_schema() -> list:
              "min": 0, "max": 20,
              "help": "每次主动思考能看到自己最近几次想了什么(说了/没说/看了)，使思绪连贯不每次从零重想。0=关闭"},
         ]},
+        {"section": "日程/待办", "key": "schedule", "fields": [
+            {"k": "enabled", "label": "启用日程调度", "type": "toggle", "restart": True,
+             "help": "开：后台扫描到期日程，到点走主动路径提醒。关：不扫描（AI 仍能用工具增删，但不会自动触发提醒）"},
+            {"k": "check_interval_seconds", "label": "扫描间隔(秒)", "type": "number",
+             "min": 5, "max": 300, "step": 5, "restart": True,
+             "help": "调度器多久扫一次到期日程。越小越准时但越耗 CPU，默认 30"},
+            {"k": "bypass_hourly_cap", "label": "绕过每小时上限", "type": "toggle",
+             "help": "日程提醒是否绕过主动发言每小时上限（仍受勿扰时段约束）。改完即生效"},
+        ]},
         {"section": "记忆（mem0）", "key": "memory", "fields": [
             {"k": "chat_history_window", "label": "短期对话窗口（条）", "type": "number",
              "min": 10, "max": 200, "step": 10,
@@ -705,6 +714,68 @@ def get_sprite_image(char_id: str, filename: str):
     if not p.exists():
         raise HTTPException(404, "图片不存在")
     return FileResponse(str(p))
+
+
+# ── 日程/待办 ──────────────────────────────────────────────────
+def _schedule_store(char: str | None = None):
+    """构造当前角色的 ScheduleStore。"""
+    from core.perception.schedule import ScheduleStore
+    return ScheduleStore(_char_dir(char))
+
+
+@app.get("/api/schedules")
+def list_schedules(char: str | None = None, include_done: bool = True) -> list[dict]:
+    """列出日程（默认含已完成）。"""
+    return [i.to_dict() for i in _schedule_store(char).list_all(include_done=include_done)]
+
+
+class ScheduleCreate(BaseModel):
+    content: str
+    trigger_at: str
+    repeat: str = "none"
+    context: str = ""
+
+
+@app.post("/api/schedules")
+def create_schedule(body: ScheduleCreate, char: str | None = None) -> dict:
+    """手动新建日程（管理平台用，不走权限）。"""
+    from core.perception.schedule import parse_trigger_at
+    iso = parse_trigger_at(body.trigger_at)
+    if not iso:
+        raise HTTPException(400, f"无法解析时间：{body.trigger_at}")
+    item = _schedule_store(char).add(body.content, body.trigger_at,
+                                     repeat=body.repeat, context=body.context)
+    if item is None:
+        raise HTTPException(400, "创建失败")
+    return {"ok": True, "item": item.to_dict()}
+
+
+class ScheduleUpdateBody(BaseModel):
+    content: str | None = None
+    trigger_at: str | None = None
+    repeat: str | None = None
+    done: bool | None = None
+
+
+@app.put("/api/schedules/{item_id}")
+def update_schedule(item_id: str, body: ScheduleUpdateBody, char: str | None = None) -> dict:
+    """修改日程 / 标记完成。"""
+    store = _schedule_store(char)
+    if body.done is True:
+        store.mark_done(item_id)
+    if body.done is False:
+        # 取消完成：直接 update done 字段不可达，用 update 不影响 done；这里简单不支持取消
+        pass
+    if body.content is not None or body.trigger_at is not None or body.repeat is not None:
+        store.update(item_id, body.content, body.trigger_at, body.repeat)
+    return {"ok": True}
+
+
+@app.delete("/api/schedules/{item_id}")
+def delete_schedule(item_id: str, char: str | None = None) -> dict:
+    """删除日程。"""
+    _schedule_store(char).delete(item_id)
+    return {"ok": True}
 
 
 # ── 角色卡 ────────────────────────────────────────────────────

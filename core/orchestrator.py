@@ -10,7 +10,7 @@ import asyncio
 import json
 import random
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from .character import CharacterCard, WorldInfoManager, load_preset
 from .cognition import Cognition
@@ -328,6 +328,8 @@ class Orchestrator:
             await self._handle_vision(event)
         elif event.type == EventType.VISION_SIGNIFICANT:
             await self._handle_vision_significant(event)
+        elif event.type == EventType.SCHEDULE:
+            await self._handle_schedule(event)
 
     async def _handle_eavesdrop(self, event: Event) -> None:
         text = (event.payload.get("text") or "").strip()
@@ -738,3 +740,127 @@ class Orchestrator:
         self._chat_history.append({"role": "assistant", "content": reply, "ts": datetime.now().isoformat(timespec="seconds")})
         self._record_inner("speak", thought, reply)
         await self._compact_history()
+
+    async def _handle_schedule(self, event: Event) -> None:
+        """日程到点触发：走主动路径，但走日程专属分支。
+
+        与心跳主动路径的区别：
+          - 跳过孤独感阈值/思考冷却（日程是外部确定触发，不该被这些拦）
+          - GateKeeper：可配绕过每小时上限（schedule.bypass_hourly_cap，默认 true），
+            但仍受勿扰时段约束（勿扰时段的日程在 Scheduler 已被延后，不会到这）
+          - trigger_reason 带日程内容，让 ta 按人设决定怎么提
+          - 支持 retry_later：ta 觉得时机不对可延后 N 分钟重新触发
+        """
+        from .events import EventPriority
+        item = event.payload.get("item") or {}
+        content = item.get("content", "")
+        context = item.get("context", "")
+        repeat = item.get("repeat", "none")
+        if not content:
+            return
+
+        self._state.tick()
+        # GateKeeper：日程可配绕过每小时上限，但仍查勿扰/间隔（间隔被 bypass 时也放行）
+        bypass = self._cfg.get("schedule.bypass_hourly_cap", True)
+        allowed, reason = self._gate.check(self._state) if not bypass else (True, "日程绕过上限")
+        # 勿扰时段硬拦（即便 bypass 也不在勿扰时打扰；正常情况 Scheduler 已延后）
+        if not allowed and "勿扰" in reason:
+            self._log.record(trigger="日程", action="silent", text=content,
+                             emotion=self._state.snapshot(), gate=reason)
+            return
+
+        preset = load_preset(self._cfg)
+        reply_lang, translation_lang = self._get_reply_lang_config()
+        voice_emotions = load_voice_emotions(self._cfg)
+        face_emotions = self._face_emotions()
+        time_context = _time_context(datetime.now())
+        elapsed = time.time() - self._state.last_interaction
+
+        trig_reason = (f"[日程触发] 你之前答应提醒他：{content}"
+                       + (f"（他当时说：{context}）" if context else "")
+                       + f"。当前时间 {datetime.now().strftime('%H:%M')}，"
+                       f"{'每天提醒' if repeat == 'daily' else '单次提醒'}。"
+                       "以角色身份决定怎么提（自然开口，或判断时机不对选 retry_later 稍后再提）。")
+
+        self._last_think_ts = time.time()
+        async with self._cognition_lock:
+            result = await self._cognition.proactive_think(
+                card=self._card, user_name=self._user_name,
+                trigger_reason=trig_reason,
+                emotion_summary=self._state.summary(),
+                chat_history=self._chat_history,
+                elapsed_desc=_elapsed_desc(elapsed), can_look=False,
+                preset=preset, reply_lang=reply_lang, translation_lang=translation_lang,
+                voice_emotions=voice_emotions,
+                face_emotions=face_emotions,
+                memories=[], earlier_summary=self._earlier_summary,
+                time_context=time_context, think_seed="",
+                recent_inner=list(self._recent_inner),
+            )
+        thought = result.get("thought", "")
+
+        # retry_later：ta 觉得时机不对，延后 retry_minutes 分钟重新触发
+        if result.get("action") == "retry_later":
+            mins = result.get("retry_minutes") or 10
+            try:
+                mins = max(1, min(int(mins), 120))
+            except (TypeError, ValueError):
+                mins = 10
+            self._log.record(trigger="日程", action="silent", thought=thought,
+                             text=content, emotion=self._state.snapshot(),
+                             gate=f"时机不对，{mins}分钟后重试")
+            self._record_inner("silent", thought)
+            # 重新入队延后触发（重新构造 item，repeat=none 避免再次标 done）
+            retry_item = dict(item)
+            retry_item["repeat"] = "none"
+            asyncio.create_task(self._requeue_schedule(retry_item, mins))
+            return
+
+        reply = result.get("text", "")
+        reply = strip_leading_time_marker(reply)
+
+        if result.get("action") != "speak" or not reply:
+            self._log.record(trigger="日程", action="silent", thought=thought,
+                             text=content, emotion=self._state.snapshot(), gate="ta选择不说")
+            self._record_inner("silent", thought)
+            return
+
+        self._log.record(trigger="日程", action="speak", thought=thought,
+                         text=reply, emotion=self._state.snapshot())
+
+        async def _once():
+            yield reply
+
+        self._log_chat("assistant", reply)
+        await self._speaker.speak(_once(), emotion=result.get("emotion") or None,
+                                   face=result.get("face") or None,
+                                   translation_lang=translation_lang)
+        if not bypass:
+            self._gate.record_spoke()
+        delta = result.get("emotion_delta") or {}
+        if delta:
+            self._state.apply_delta(delta)
+        self._state.on_proactive_spoke()
+        self._awaiting_reply = True
+        self._last_proactive_ts = time.time()
+        self._state.save(self._state_path)
+        self._memory.add(
+            f"我主动提醒{self._user_name}:{reply}（日程:{content}）",
+            self._state.snapshot(), tags=["对话", "主动", "日程"],
+        )
+        self._chat_history.append({"role": "assistant", "content": reply, "ts": datetime.now().isoformat(timespec="seconds")})
+        self._record_inner("speak", thought, reply)
+        await self._compact_history()
+
+    async def _requeue_schedule(self, item: dict, delay_minutes: int) -> None:
+        """retry_later：延后重新投递 SCHEDULE 事件。"""
+        from .events import Event as _Evt, EventPriority as _P
+        await asyncio.sleep(delay_minutes * 60)
+        try:
+            await self.enqueue(_Evt(
+                priority=_P.NORMAL,
+                type=EventType.SCHEDULE,
+                payload={"item": item},
+            ))
+        except Exception as e:  # noqa: BLE001
+            log.warning("日程重排队失败: %s", e)
