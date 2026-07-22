@@ -158,13 +158,21 @@ token_intensive:
   proactive_cot: true
   memory_query_generation: true
 sprite:
-  # 桌面立绘浮窗（PyQt6 独立进程）。enabled=true 时启动浮窗，按 <face:表情> 标签换差分图。
-  # 需先 pip install PyQt6。改后需重启。立绘库放 data/characters/{角色}/sprites/sprites.json
+  # 桌面立绘浮窗 + 系统托盘（PyQt6 独立进程，随主程序常驻）。
+  # enabled=true 启动时显示浮窗；enabled=false 仅托盘常驻、浮窗可由托盘唤出。
+  # 需先 pip install PyQt6（未装则跳过整个浮窗/托盘子系统）。改后需重启。
+  # 立绘库放 data/characters/{角色}/sprites/sprites.json
   enabled: false
   host: 127.0.0.1
   port: 17621
   bubble_timeout: 5  # 台词气泡超时秒数（说完一句后停这么久消失，0=不消失一直显示）
   face_reset_timeout: 8  # 表情切换后过这么久自动回 neutral（0=不恢复，一直停最后表情）
+  motion:  # 立绘情绪抖动（表情切换时上下跳/左右晃几下，蔚蓝档案式，衰减归零）
+    enabled: true            # 开则表情切换时抖一下
+    amplitude: 14            # 抖动幅度（px），0=不动
+    duration_ms: 500         # 单次抖动时长（ms）
+    bounces: 3               # 抖几下（衰减正弦周期数）
+    decay: 3.5               # 衰减速率，越大停得越快
 logging:
   enabled: true
   level: DEBUG

@@ -41,6 +41,8 @@ async def main() -> None:
     gatekeeper = GateKeeper(cfg)
     consciousness = ConsciousnessLog(char_dir / "consciousness.jsonl")
     ready = asyncio.Event()
+    # 托盘「退出」命令置位此事件 -> 打断输入源 await -> 走 finally 清理（同 Ctrl+C 路径）
+    shutdown_evt = asyncio.Event()
 
     # 视觉感知先构造，传给 orchestrator（主动 look_now 需要）
     from core.perception.vision import Vision
@@ -105,9 +107,11 @@ async def main() -> None:
     from core.tools.schedule_tools import register_schedule_tools
     register_schedule_tools(schedule_store, cfg)
 
-    # 立绘浮窗：起 face 广播 TCP server，把立绘表情推给独立浮窗进程（开关 sprite.enabled）
+    # 立绘浮窗 + 系统托盘（方案B：随主程序常驻）。sprite_window 无条件启动（浮窗+托盘），
+    # sprite.enabled 控制启动时是否显示浮窗；未装 PyQt6 则跳过降级。
     sprite_proc = None
-    if cfg.get("sprite.enabled", False):
+    import importlib.util
+    if importlib.util.find_spec("PyQt6") is not None:
         from core.sprite.broadcaster import FaceBroadcaster
         sprite_host = cfg.get("sprite.host", "127.0.0.1")
         sprite_port = int(cfg.get("sprite.port", 17621))
@@ -124,15 +128,29 @@ async def main() -> None:
                 payload={"text": text},
             ))
         broadcaster.set_on_chat(_on_sprite_chat)
+
+        # 托盘「退出」命令 -> 置位 shutdown_evt 触发优雅关闭（走下方 finally 清理）
+        async def _on_sprite_command(cmd: str) -> None:
+            if cmd == "quit":
+                log.info("收到托盘退出命令，准备关闭…")
+                shutdown_evt.set()
+        broadcaster.set_on_command(_on_sprite_command)
         # 拉起独立浮窗进程（detached；主程序退出时 terminate）
         import subprocess
+        show_sprite = bool(cfg.get("sprite.enabled", False))
+        webui_port = cfg.get("ui.webui_port", 8080)
         sprite_proc = subprocess.Popen(
             [sys.executable, str(cfg.project_root / "sprite_window.py"),
              "--port", str(sprite_port), "--host", sprite_host,
-             "--character", char_name],
+             "--character", char_name,
+             "--webui-port", str(webui_port),
+             "--show" if show_sprite else "--no-show"],
             cwd=str(cfg.project_root),
         )
-        log.info("立绘浮窗已启动: http://%s:%s", sprite_host, sprite_port)
+        log.info("立绘浮窗/托盘已启动: %s:%s (显示浮窗=%s)",
+                 sprite_host, sprite_port, show_sprite)
+    else:
+        log.warning("未装 PyQt6，跳过立绘浮窗/托盘（pip install PyQt6 后重启启用）")
 
     vision_task = asyncio.create_task(vision.start())
 
@@ -157,6 +175,7 @@ async def main() -> None:
         admin_module.set_reload_card(orch.reload_card)
         admin_module.set_delete_memory(orch._memory.delete_user)
         admin_module.set_live_config(cfg, refreshers)
+        admin_module.set_generate_motion(cognition.generate_motion_map)
         port = cfg.get("ui.webui_port", 8080)
         host = cfg.get("ui.webui_host", "127.0.0.1")
         admin_cfg = uvicorn.Config(admin_module.app, host=host, port=port, log_level="warning")
@@ -172,6 +191,8 @@ async def main() -> None:
 
     # 输入源: audio.enabled 决定走麦克风还是文本
     audio_on = cfg.get("perception.audio.enabled", False)
+    mic = None
+    text_in = None
     try:
         if audio_on:
             classifier = Classifier(
@@ -181,10 +202,29 @@ async def main() -> None:
             mic = MicInput(cfg, orch.enqueue, classifier, ready=ready, speaker=speaker)
             orch.bind_history_sink(mic.update_history)  # 旁听上下文同步给分类器
             orch.bind_character_refresh(mic.refresh_character)  # 切换角色时刷新唤醒词
-            await mic.start()
+            input_coro = mic.start()
         else:
             text_in = TextInput(cfg, orch.enqueue, ready=ready)
-            await text_in.start()
+            input_coro = text_in.start()
+
+        # 输入源跑成 task，与 shutdown_evt 并发等待：托盘「退出」置位事件即可打断，
+        # 走下方 finally 清理（与 Ctrl+C 同路径）。正常 /quit 或 EOF 时 input_task 先完成。
+        input_task = asyncio.create_task(input_coro)
+        shutdown_task = asyncio.create_task(shutdown_evt.wait())
+        done, pending = await asyncio.wait(
+            {input_task, shutdown_task}, return_when=asyncio.FIRST_COMPLETED
+        )
+        for t in pending:
+            t.cancel()
+        for t in pending:
+            try:
+                await t
+            except (asyncio.CancelledError, Exception):
+                pass
+        if mic is not None:
+            mic.stop()
+        if text_in is not None:
+            text_in.stop()
     finally:
         vision.stop()
         heartbeat.stop()

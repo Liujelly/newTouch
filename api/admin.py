@@ -66,6 +66,15 @@ def set_delete_memory(fn) -> None:
     _delete_memory_fn = fn
 
 
+# 立绘抖动动作 LLM 生成回调（由 main.py 注入 cognition.generate_motion_map）
+_generate_motion_fn = None
+
+
+def set_generate_motion(fn) -> None:
+    global _generate_motion_fn
+    _generate_motion_fn = fn
+
+
 def set_live_config(cfg, refreshers: dict | None = None) -> None:
     """注入运行中的内存 Config + 热更钩子。put_config 保存后用它们让改动即时生效。"""
     global _live_config, _refreshers
@@ -323,7 +332,7 @@ def get_config_schema() -> list:
         ]},
         {"section": "立绘浮窗", "key": "sprite", "fields": [
             {"k": "enabled", "label": "启用桌面立绘浮窗", "type": "toggle", "restart": True,
-             "help": "开则启动 PyQt6 透明置顶浮窗，按 <face:表情> 标签切换差分立绘。需先 pip install PyQt6。立绘库放 data/characters/{角色}/sprites/sprites.json。改后需重启"},
+             "help": "开=启动时显示桌面立绘浮窗；关=浮窗隐藏（托盘仍常驻，可由托盘随时唤出）。系统托盘随主程序常驻，需装 PyQt6。立绘库放 data/characters/{角色}/sprites/sprites.json。改后需重启"},
             {"k": "host", "label": "广播地址", "type": "text", "restart": True,
              "help": "浮窗通信地址，默认 127.0.0.1（本机）"},
             {"k": "port", "label": "广播端口", "type": "number", "min": 1024, "max": 65535, "restart": True,
@@ -332,6 +341,16 @@ def get_config_schema() -> list:
              "help": "立绘头顶台词气泡说完一句后停这么久消失。0=不消失一直显示。改后需重启"},
             {"k": "face_reset_timeout", "label": "表情恢复(秒)", "type": "number", "min": 0, "max": 120, "step": 1, "restart": True,
              "help": "表情切换后过这么久自动回 neutral（情绪过去回归平静）。0=不恢复一直停最后表情。改后需重启"},
+            {"k": "motion.enabled", "label": "立绘情绪抖动", "type": "toggle", "restart": True,
+             "help": "表情切换时立绘上下跳/左右晃几下（蔚蓝档案式，衰减归零）。情绪->动作映射代码侧固定（得意/开心/兴奋=上下跳，惊讶=猛跳，生气=左右晃）。改后需重启"},
+            {"k": "motion.amplitude", "label": "抖动幅度(px)", "type": "number", "min": 0, "max": 60, "step": 1, "restart": True,
+             "help": "抖动幅度（像素），0=不动。改后需重启"},
+            {"k": "motion.duration_ms", "label": "抖动时长(ms)", "type": "number", "min": 0, "max": 3000, "step": 50, "restart": True,
+             "help": "单次抖动总时长（毫秒）。改后需重启"},
+            {"k": "motion.bounces", "label": "抖几下", "type": "number", "min": 1, "max": 10, "step": 1, "restart": True,
+             "help": "衰减正弦周期数（上下跳/左右晃的次数）。改后需重启"},
+            {"k": "motion.decay", "label": "衰减速率", "type": "number", "min": 0, "max": 10, "step": 0.5, "restart": True,
+             "help": "衰减速率，越大停得越快。改后需重启"},
         ]},
         {"section": "日志", "key": "logging", "fields": [
             {"k": "enabled", "label": "写日志文件", "type": "toggle",
@@ -681,6 +700,35 @@ def put_sprites(char_id: str, body: SpriteLibUpdate) -> dict:
         json.dumps(body.lib, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     return {"ok": True}
+
+
+@app.post("/api/sprites/{char_id}/auto-motion")
+async def auto_sprite_motion(char_id: str) -> dict:
+    """大模型给该角色每个表情生成抖动动作（bounce/jump/shake/none）。
+
+    读立绘库的表情列表 -> LLM 分配 -> 返回建议映射（不落盘；前端确认后随
+    「保存立绘库」一起存进 sprites.json 的 motion_map 字段）。
+    """
+    if _generate_motion_fn is None:
+        raise HTTPException(503, "LLM 生成未就绪（主进程未注入）")
+    p = _sprites_json_path(char_id)
+    emotions: list[str] = []
+    if p.exists():
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+            emos = data.get("emotions") if isinstance(data, dict) else None
+            if isinstance(emos, dict):
+                emotions = list(emos.keys())
+        except (json.JSONDecodeError, ValueError, OSError):
+            pass
+    if not emotions:
+        raise HTTPException(400, "该角色暂无表情档，先在立绘库添加表情")
+    try:
+        motion_map = await _generate_motion_fn(emotions)
+    except Exception as e:  # noqa: BLE001
+        log.error("生成抖动动作失败: %s", e)
+        raise HTTPException(500, f"生成失败: {e}")
+    return {"motion_map": motion_map}
 
 
 @app.post("/api/sprites/{char_id}/image")

@@ -29,10 +29,18 @@ class FaceBroadcaster:
         self._server: asyncio.AbstractServer | None = None
         self._started = False
         self._on_chat = None  # 浮窗发来聊天消息的回调（main.py 注入 enqueue）
+        self._on_command = None  # 浮窗发来控制命令的回调（main.py 注入，如 quit）
 
     def set_on_chat(self, callback) -> None:
         """注入聊天回调：浮窗发来 {"chat":"..."} 时调用 callback(text)。"""
         self._on_chat = callback
+
+    def set_on_command(self, callback) -> None:
+        """注入命令回调：浮窗发来 {"cmd":"..."} 时调用 callback(cmd)。
+
+        托盘菜单的"退出"等动作走此通道（复用现有 TCP 连接，不另开）。
+        """
+        self._on_command = callback
 
     async def start(self) -> None:
         """启动 TCP server。失败静默降级（浮窗功能可选）。"""
@@ -82,6 +90,12 @@ class FaceBroadcaster:
                                     await self._on_chat(text)
                                 except Exception as e:  # noqa: BLE001
                                     log.warning("on_chat 回调失败: %s", e)
+                        cmd = obj.get("cmd")
+                        if cmd and self._on_command:
+                            try:
+                                await self._on_command(str(cmd))
+                            except Exception as e:  # noqa: BLE001
+                                log.warning("on_command 回调失败: %s", e)
                     except (json.JSONDecodeError, ValueError):
                         pass
         except (ConnectionError, OSError):

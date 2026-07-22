@@ -697,6 +697,10 @@ code{font-family:var(--mono);font-size:11.5px;background:rgba(64,158,255,.1);col
       </div>
       <div v-if="spChar && spDoc">
         <div class="card">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+            <button class="btn btn-sm btn-primary" @click="genSpMotion" :disabled="spGenLoading">{{spGenLoading?'生成中…':'🪄 大模型生成抖动动作'}}</button>
+            <span style="font-size:12px;color:#64748b">按情绪语义自动分配上下跳/猛跳/左右晃/不动，生成后可微调，保存立绘库后重启浮窗生效</span>
+          </div>
           <div style="display:flex;justify-content:space-between;margin-bottom:10px;align-items:center">
             <span style="font-size:12px;color:#64748b">表情档 — 主脑回复时按 &lt;face:表情&gt; 标签切换立绘。与语音库 &lt;emo:&gt; 独立，可不同。</span>
             <span style="display:flex;gap:6px">
@@ -719,6 +723,16 @@ code{font-family:var(--mono);font-size:11.5px;background:rgba(64,158,255,.1);col
                 <div class="field-row">
                   <label>图片文件</label>
                   <input v-model="info.image" placeholder="上传后自动填入，或手填文件名">
+                </div>
+                <div class="field-row" style="margin-top:6px">
+                  <label>抖动动作</label>
+                  <select :value="spMotionOf(emo)" @change="spMotionSet(emo,$event.target.value)" class="tb-sel" style="width:130px">
+                    <option value="">（默认）</option>
+                    <option value="bounce">上下跳</option>
+                    <option value="jump">猛跳一下</option>
+                    <option value="shake">左右晃</option>
+                    <option value="none">不动</option>
+                  </select>
                 </div>
                 <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
                   <input type="file" accept="image/*" @change="e=>uploadSpImage(emo,e.target.files[0])" style="font-size:11px">
@@ -1427,13 +1441,14 @@ createApp({
         // 默认选当前角色
         if (!cardList.value.length) await loadCardList()
         if (cardList.value.length) {
-          const cur = cfg.value?.character?.name || cardList.value[0].id
+          const cur = cardName.value || cardList.value[0].id
           spChar.value = cardList.value.some(c => c.id === cur) ? cur : cardList.value[0].id
         }
       }
       if (!spChar.value) return
       const d = await fetch('/api/sprites/'+encodeURIComponent(spChar.value)).then(r=>r.json())
       spDoc.value = d
+      if (!spDoc.value.motion_map) spDoc.value.motion_map = {}
     }
     function addSpEmo() {
       const emo = (spNewEmo.value||'').trim()
@@ -1466,6 +1481,41 @@ createApp({
       const r = await fetch('/api/sprites/'+encodeURIComponent(spChar.value),
         {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({lib:spDoc.value})})
       showToast(r.ok?'✓ 立绘库已保存':'保存失败', r.ok)
+    }
+    // 抖动动作：大模型生成 + 每表情读写 motion_map
+    const spGenLoading = ref(false)
+    async function genSpMotion() {
+      if (!spChar.value) return
+      spGenLoading.value = true
+      try {
+        const r = await fetch('/api/sprites/'+encodeURIComponent(spChar.value)+'/auto-motion',{method:'POST'})
+        if (!r.ok) {
+          const d = await r.json().catch(()=>({}))
+          showToast('生成失败：'+(d.detail||r.status), false)
+          return
+        }
+        const d = await r.json()
+        const mm = d.motion_map || {}
+        if (!spDoc.value) spDoc.value = {emotions:{}}
+        if (!spDoc.value.motion_map) spDoc.value.motion_map = {}
+        Object.assign(spDoc.value.motion_map, mm)
+        if (Object.keys(mm).length === 0) {
+          showToast('⚠️ LLM 未返回有效映射（调用失败或未识别），查看日志 cognition 模块', false)
+        } else {
+          showToast('✓ 已生成 '+Object.keys(mm).length+' 个动作，确认后点「保存立绘库」', true)
+        }
+      } finally {
+        spGenLoading.value = false
+      }
+    }
+    function spMotionOf(emo) {
+      return (spDoc.value?.motion_map||{})[emo] || ''
+    }
+    function spMotionSet(emo, v) {
+      if (!spDoc.value) return
+      if (!spDoc.value.motion_map) spDoc.value.motion_map = {}
+      if (v === '') delete spDoc.value.motion_map[emo]
+      else spDoc.value.motion_map[emo] = v
     }
 
     // 角色卡语音库绑定
@@ -1558,6 +1608,7 @@ createApp({
       getEmoRefs, addEmoRef, removeEmoRef,
       voiceLibList, cardVoiceLib, cardWakeWords, cardReplyLang, cardTranslationLang,
       spChar, spDoc, spNewEmo, loadSprites, addSpEmo, uploadSpImage, deleteSpImage, saveSprites,
+      spGenLoading, genSpMotion, spMotionOf, spMotionSet,
     }
   }
 }).mount('#app')

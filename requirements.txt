@@ -44,5 +44,5 @@ fastapi>=0.110.0
 uvicorn>=0.30.0            # 0.30+ 修复了 websockets 弃用警告
 python-multipart>=0.0.9
 
-# ── 立绘浮窗（PyQt6 桌面透明窗口，可选）──
-PyQt6>=6.6.0              # sprite.enabled=true 时需要；不装则保持 enabled=false
+# ── 立绘浮窗 + 系统托盘（PyQt6，随主程序常驻，可选）──
+PyQt6>=6.6.0              # 立绘浮窗+系统托盘需要；不装则跳过整个浮窗/托盘子系统

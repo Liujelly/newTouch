@@ -198,6 +198,48 @@ def _parse_monologue(raw: str, use_cot: bool = False) -> dict:
     return {"thought": thought, "action": "speak", "text": text, "emotion": emotion, "face": face, "emotion_delta": delta}
 
 
+def _parse_motion_map(raw: str, emotions: list[str]) -> dict[str, str]:
+    """从 LLM 输出解析 {情绪: 抖动动作}。
+
+    动作归一为 bounce/jump/shake/none（接受英文及常见中文别名），只保留 emotions
+    列表里的情绪。找不到 JSON 或解析失败返回 {}（调用方用代码默认兜底）。
+    """
+    m = re.search(r"\{.*\}", raw, re.DOTALL)
+    if not m:
+        return {}
+    try:
+        data = json.loads(m.group(0))
+    except (json.JSONDecodeError, ValueError):
+        return {}
+    valid = {"bounce", "jump", "shake", "none"}
+    out: dict[str, str] = {}
+    for emo, motion in data.items():
+        if emo in emotions:
+            n = _normalize_motion(motion)
+            if n:
+                out[str(emo)] = n
+    return out
+
+
+# 抖动动作别名 -> 规范名（LLM 可能返回中文，统一归一）
+_MOTION_ALIASES = {
+    "bounce": "bounce", "jump": "jump", "shake": "shake", "none": "none",
+    "上下跳": "bounce", "跳": "bounce", "跳动": "bounce", "弹跳": "bounce",
+    "猛跳": "jump", "跳一下": "jump", "猛跳一下": "jump",
+    "左右晃": "shake", "晃": "shake", "抖动": "shake", "摇晃": "shake",
+    "不动": "none", "无": "none", "静止": "none", "默认": "none",
+}
+
+
+def _normalize_motion(v) -> str | None:
+    """把 LLM 返回的动作值归一为 bounce/jump/shake/none，无法识别返回 None。"""
+    s = str(v).strip()
+    if s in _MOTION_ALIASES:
+        return _MOTION_ALIASES[s]
+    sl = s.lower()
+    return _MOTION_ALIASES.get(sl)
+
+
 class Cognition:
     def __init__(self, config: Config):
         self._cfg = config
@@ -671,6 +713,36 @@ class Cognition:
         except (json.JSONDecodeError, ValueError):
             return {}
         return _parse_emotion_delta(data)
+
+    async def generate_motion_map(self, emotions: list[str]) -> dict[str, str]:
+        """给每个表情分配一个立绘抖动动作（bounce/jump/shake/none），LLM 生成。
+
+        立绘库管理页「大模型生成抖动动作」用：把角色立绘库的表情列表给 LLM，
+        让它按情绪语义分配合适的抖动。失败返回 {}（调用方用代码默认兜底）。
+        """
+        if not emotions:
+            return {}
+        sys_prompt = (
+            "你是立绘动作设计师。给每个表情分配一个抖动动作，让立绘切换到该表情时动一下。\n"
+            "动作类型：\n"
+            "- bounce：上下跳动几下（开心/得意/兴奋/愉快/期待 等积极活跃情绪）\n"
+            "- jump：猛跳一下（惊讶/吃惊/震惊/吓一跳 等强烈突发情绪）\n"
+            "- shake：左右晃动（生气/愤怒/烦躁/不满 等负面激动情绪）\n"
+            "- none：不动（平静/中性/思考/发呆/睡觉 等安静情绪）\n"
+            "只输出 JSON，键为表情名原样，值为上述四种之一。"
+            "如 {\"得意\":\"bounce\",\"惊讶\":\"jump\",\"neutral\":\"none\"}。"
+        )
+        msg = [{"role": "user", "content": "表情列表：" + ", ".join(emotions)}]
+        try:
+            raw = await self._complete(sys_prompt, msg)
+        except Exception as e:  # noqa: BLE001
+            log.warning("generate_motion_map 失败: %s", e)
+            return {}
+        log.debug("[LLM] generate_motion_map 原始输出: %s", (raw or "")[:200])
+        out = _parse_motion_map(raw, emotions)
+        if not out:
+            log.warning("generate_motion_map 解析为空，原始输出: %s", (raw or "")[:200])
+        return out
 
     async def summarize_history(self, batch_text: str, prev_summary: str = "") -> str:
         """把"旧摘要 + 这批要移出窗口的对话"融合成一段简洁的早先聊天摘要。

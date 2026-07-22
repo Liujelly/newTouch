@@ -15,9 +15,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import socket
 import sys
 import threading
+import webbrowser
 from pathlib import Path
 
 # 项目根（本文件在根目录）
@@ -25,12 +27,14 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from PyQt6.QtCore import Qt, pyqtSignal, QObject, QTimer
-from PyQt6.QtGui import QPixmap
-from PyQt6.QtWidgets import QApplication, QLabel, QWidget, QLineEdit
+from PyQt6.QtCore import Qt, pyqtSignal, QObject, QTimer, QVariantAnimation
+from PyQt6.QtGui import QAction, QIcon, QPixmap, QPainter, QColor, QPainterPath
+from PyQt6.QtWidgets import (
+    QApplication, QLabel, QWidget, QLineEdit, QSystemTrayIcon, QMenu,
+)
 
 from core.config import load_config
-from core.sprite.store import load_sprites, image_path
+from core.sprite.store import load_sprites, image_path, load_motion_map
 
 
 class FaceReceiver(QObject):
@@ -53,6 +57,24 @@ class FaceReceiver(QObject):
         if not text:
             return False
         line = json.dumps({"chat": text}, ensure_ascii=False) + "\n"
+        with self._lock:
+            sock = self._sock
+            if sock is None:
+                return False
+            try:
+                sock.sendall(line.encode("utf-8"))
+                return True
+            except OSError:
+                return False
+
+    def send_command(self, cmd: str) -> bool:
+        """往主程序发一条控制命令 {"cmd":"..."}（如 quit）。返回是否成功。
+
+        托盘菜单动作走此通道，复用现有 TCP 连接，不另开。
+        """
+        if not cmd:
+            return False
+        line = json.dumps({"cmd": cmd}, ensure_ascii=False) + "\n"
         with self._lock:
             sock = self._sock
             if sock is None:
@@ -113,6 +135,100 @@ class FaceReceiver(QObject):
 
     def stop(self) -> None:
         self._stop.set()
+
+
+class SpriteMotion:
+    """立绘情绪抖动：表情切换时按情绪播一次衰减正弦平移（上下跳/左右晃）。
+
+    蔚蓝档案式：整个立绘在表情切换瞬间抖几下、衰减归零，非持续动画。
+    移动整个浮窗（window.move）而非内部 label，避免超出窗口边界被裁剪。
+    触发：SpriteWindow.show_face 收到非 neutral 表情时 play(face)。
+    """
+
+    # 情绪 -> 动作（hardcode 默认映射）：
+    # bounce=上下跳 / jump=猛跳一下（幅度大、单次）/ shake=左右晃（频率高）/ none=不动
+    _DEFAULT_MAP = {
+        "得意": "bounce", "happy": "bounce", "开心": "bounce", "兴奋": "bounce",
+        "惊讶": "jump", "surprised": "jump", "吃惊": "jump",
+        "生气": "shake", "angry": "shake", "愤怒": "shake",
+    }
+
+    def __init__(self, window, config, char_name: str | None = None,
+                 motion_map: dict | None = None) -> None:
+        self._window = window
+        self._config = config
+        self._char_name = char_name
+        self._enabled = bool(config.get("sprite.motion.enabled", True))
+        self._amplitude = float(config.get("sprite.motion.amplitude", 14))
+        self._duration = int(config.get("sprite.motion.duration_ms", 500))
+        self._bounces = float(config.get("sprite.motion.bounces", 3))
+        self._decay = float(config.get("sprite.motion.decay", 3.5))
+        # 初始 map：显式 motion_map（测试用）> char_name 读 > 空
+        if motion_map is not None:
+            mm = motion_map
+        elif char_name:
+            mm = load_motion_map(config, char_name)
+        else:
+            mm = {}
+        self._map = {**self._DEFAULT_MAP, **mm}
+        self._anim = None  # 当前动画（同一时刻只播一个）
+
+    @staticmethod
+    def _offset(motion: str, phase: float, amp: float,
+                bounces: float, decay: float) -> tuple[float, float]:
+        """衰减正弦偏移：offset = amp * sin(2π·bounces·phase) * exp(-decay·phase)。
+
+        bounce/jump -> 纵向（向上为负 y）；shake -> 横向。phase∈[0,1]。
+        """
+        env = math.exp(-decay * phase)
+        s = math.sin(2 * math.pi * bounces * phase) * env
+        if motion == "shake":
+            return amp * s, 0.0
+        return 0.0, -amp * s
+
+    def play(self, face: str) -> None:
+        if not self._enabled or not face or face == "neutral":
+            return
+        # hot-reload：每次 play 重读 motion_map（管理平台改完保存即生效，无需重启浮窗）
+        if self._char_name:
+            self._map = {**self._DEFAULT_MAP,
+                         **load_motion_map(self._config, self._char_name)}
+        motion = self._map.get(face)
+        print(f"[sprite] motion face={face!r} -> {motion!r} (map={len(self._map)})",
+              flush=True)
+        if not motion or motion == "none":
+            return
+        # 新动作来了停掉上一个
+        if self._anim is not None:
+            self._anim.stop()
+
+        base = self._window.pos()  # 抖动基准位置（动画结束精确归位）
+        amp = self._amplitude
+        bounces = self._bounces
+        if motion == "jump":
+            amp *= 1.6
+            bounces = 1.0
+        elif motion == "shake":
+            bounces = max(bounces, 4.0)  # 左右晃频率高些
+
+        anim = QVariantAnimation(self._window)
+        anim.setDuration(self._duration)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+
+        def _apply(phase: float) -> None:
+            dx, dy = SpriteMotion._offset(motion, phase, amp, bounces, self._decay)
+            self._window.move(base.x() + int(round(dx)),
+                              base.y() + int(round(dy)))
+
+        def _finished() -> None:
+            self._window.move(base.x(), base.y())  # 精确归位
+            self._anim = None
+
+        anim.valueChanged.connect(_apply)
+        anim.finished.connect(_finished)
+        self._anim = anim
+        anim.start()
 
 
 class SpriteWindow(QWidget):
@@ -191,6 +307,10 @@ class SpriteWindow(QWidget):
         # 拖动状态：不点击穿透（始终可拖），代价是浮窗会挡住后面操作
         self._drag_offset = None
 
+        # 情绪抖动（表情切换时立绘上下跳/左右晃几下，蔚蓝档案式）。
+        # 传 char_name 给 SpriteMotion，每次 play 重读 sprites.json 的 motion_map（hot-reload）。
+        self._motion = SpriteMotion(self, config, char_name=self._char_name)
+
     def mousePressEvent(self, event) -> None:
         """按住左键开始拖动窗口。"""
         if event.button() == Qt.MouseButton.LeftButton:
@@ -211,6 +331,15 @@ class SpriteWindow(QWidget):
     def set_receiver(self, receiver) -> None:
         """注入 FaceReceiver（输入框发送消息用）。"""
         self._receiver = receiver
+
+    def request_chat_input(self) -> None:
+        """对外入口：弹出聊天输入框（托盘"直接聊天"用）。
+
+        窗口隐藏时会先 show 再弹输入框（输入框是窗口子控件，窗口不可见则它也不可见）。
+        """
+        if not self.isVisible():
+            self.show()
+        self._show_input(None)
 
     def contextMenuEvent(self, event) -> None:
         """右键浮窗 → 弹出聊天输入框。"""
@@ -255,6 +384,8 @@ class SpriteWindow(QWidget):
         """
         self._show_face(face)
         self._face_reset_timer.stop()  # 新 face 来了，取消上一轮的恢复倒计时
+        if self._motion is not None:
+            self._motion.play(face)  # 表情切换时抖一下（非 neutral）
 
     def show_text(self, text: str) -> None:
         """Qt 信号槽：收到增量 chunk，追加到气泡（流式打字效果），气泡在立绘上方独立区。
@@ -334,17 +465,112 @@ class SpriteWindow(QWidget):
         self.resize(self.width(), self._bubble_area_h + label_h)
 
 
+def _make_tray_icon() -> QIcon:
+    """程序化绘制托盘图标：圆角蓝底（#409EFF）+ 白心（陪伴体）。无外部资源依赖。"""
+    pix = QPixmap(64, 64)
+    pix.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pix)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor("#409EFF"))
+    p.drawRoundedRect(2, 2, 60, 60, 14, 14)
+    p.setBrush(QColor("#FFFFFF"))
+    path = QPainterPath()
+    path.moveTo(32, 52)
+    path.cubicTo(8, 40, 12, 18, 32, 24)
+    path.cubicTo(52, 18, 56, 40, 32, 52)
+    p.drawPath(path)
+    p.end()
+    return QIcon(pix)
+
+
+class TrayController:
+    """系统托盘图标 + 菜单（newTouch 运行期间常驻的控制入口）。
+
+    菜单四件套：显示/隐藏立绘、打开控制台、直接聊天、退出 newTouch。
+    左键单击托盘 = 切换浮窗显示/隐藏；右键 = 弹菜单。
+    """
+
+    def __init__(self, window: SpriteWindow, receiver: FaceReceiver,
+                 webui_port: int, app: QApplication) -> None:
+        self._window = window
+        self._receiver = receiver
+        self._webui_port = webui_port
+        self._app = app
+
+        self._tray = QSystemTrayIcon(_make_tray_icon(), app)
+        self._tray.setToolTip("newTouch 陪伴体")
+        self._tray.activated.connect(self._on_activated)
+
+        menu = QMenu()
+        self._menu = menu  # 持有引用防 GC（setContextMenu 不接管 menu 所有权）
+        self._act_toggle = QAction(
+            "隐藏立绘" if window.isVisible() else "显示立绘", menu)
+        self._act_toggle.triggered.connect(self._toggle_window)
+        menu.addAction(self._act_toggle)
+
+        act_console = QAction("打开控制台", menu)
+        act_console.triggered.connect(self._open_console)
+        menu.addAction(act_console)
+
+        act_chat = QAction("直接聊天", menu)
+        act_chat.triggered.connect(self._chat)
+        menu.addAction(act_chat)
+
+        menu.addSeparator()
+        act_quit = QAction("退出 newTouch", menu)
+        act_quit.triggered.connect(self._quit)
+        menu.addAction(act_quit)
+
+        self._tray.setContextMenu(menu)
+        self._tray.show()
+
+    def _on_activated(self, reason) -> None:
+        # 左键单击 -> 切换浮窗显示/隐藏；右键菜单由 setContextMenu 自动处理
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:
+            self._toggle_window()
+
+    def _toggle_window(self) -> None:
+        if self._window.isVisible():
+            self._window.hide()
+            self._act_toggle.setText("显示立绘")
+        else:
+            self._window.show()
+            self._act_toggle.setText("隐藏立绘")
+
+    def _open_console(self) -> None:
+        webbrowser.open(f"http://127.0.0.1:{self._webui_port}/")
+
+    def _chat(self) -> None:
+        self._window.request_chat_input()
+
+    def _quit(self) -> None:
+        # 通知主进程优雅退出（走 TCP 命令通道），再退出浮窗自身
+        self._receiver.send_command("quit")
+        self._app.quit()
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="newTouch 立绘浮窗")
+    parser = argparse.ArgumentParser(description="newTouch 立绘浮窗 + 系统托盘")
     parser.add_argument("--port", type=int, default=17621)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--character", default="默认")
+    parser.add_argument("--webui-port", type=int, default=8080,
+                        help="管理平台端口（托盘「打开控制台」用）")
+    parser.add_argument("--show", dest="show", action="store_true", default=True,
+                        help="启动时显示立绘浮窗（默认）")
+    parser.add_argument("--no-show", dest="show", action="store_false",
+                        help="启动时隐藏立绘浮窗（仅托盘常驻）")
     args = parser.parse_args()
 
     app = QApplication(sys.argv)
+    # 浮窗可被托盘隐藏；隐藏最后一个窗口不应退出 app（托盘需常驻）
+    app.setQuitOnLastWindowClosed(False)
+
     config = load_config()
     window = SpriteWindow(config, args.character)
-    window.show()
+    if args.show:
+        window.show()
 
     receiver = FaceReceiver(args.host, args.port)
     receiver.face_received.connect(window.show_face)
@@ -353,6 +579,15 @@ def main() -> None:
     window.set_receiver(receiver)
     t = threading.Thread(target=receiver.run, daemon=True)
     t.start()
+
+    # 系统托盘：newTouch 运行期间常驻控制入口（无系统托盘环境降级跳过）。
+    # 必须把 controller 挂到 app 上持有引用：否则 __init__ 后 TrayController 被 GC，
+    # 托盘 C++ 对象虽在（parent=app 仍显示），但菜单 action 的 Python 槽随 self 回收，
+    # 点菜单项无反应。
+    if QSystemTrayIcon.isSystemTrayAvailable():
+        app.tray_ctrl = TrayController(window, receiver, args.webui_port, app)
+    else:
+        print("[sprite] 系统托盘不可用，跳过托盘初始化", file=sys.stderr)
 
     def on_quit():
         receiver.stop()

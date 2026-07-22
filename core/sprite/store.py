@@ -65,6 +65,26 @@ def load_face_emotions(config: Config, char_name: str) -> list[str]:
     return list(load_sprites(config, char_name).keys())
 
 
+def load_motion_map(config: Config, char_name: str) -> dict[str, str]:
+    """读立绘库的 motion_map（{情绪: 动作}），表情->抖动动作映射。不存在返回 {}。
+
+    由 LLM 在立绘库管理页生成、用户确认保存进 sprites.json 的 motion_map 字段。
+    浮窗 SpriteMotion 用它覆盖代码默认 _DEFAULT_MAP。动作值校验为四选一。
+    """
+    p = _sprites_json_path(config, char_name)
+    if not p.exists():
+        return {}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, ValueError, OSError):
+        return {}
+    mm = data.get("motion_map") if isinstance(data, dict) else None
+    if not isinstance(mm, dict):
+        return {}
+    valid = {"bounce", "jump", "shake", "none"}
+    return {str(k): str(v) for k, v in mm.items() if str(v) in valid}
+
+
 def image_path(face: str | None, mapping: dict[str, str]) -> str | None:
     """按 face 查立绘图路径。未命中回退 neutral，再未命中回退首张，都没有 None。
 
