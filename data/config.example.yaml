@@ -157,6 +157,13 @@ token_intensive:
   # 已实现的优化（其余 8 个方向见 docs/Token密集型优化方案.md，待实现时再加开关）
   proactive_cot: true
   memory_query_generation: true
+reply_review:
+  # 回复审查机制：对 AI 反应路径回复做机械审查（循环重复/过长/系统标记泄漏），
+  # 不合格则再调一轮 LLM 在原回复上最小修正（非重新生成）。
+  # ⚠️ 开启代价：反应路径回复【不走流式】（需缓存全文审查后再播，出声变慢），
+  #    且不合格时会【多一轮 LLM 调用】。默认关闭，按需开启。
+  enabled: false
+  max_length: 400  # 回复可见正文超过此字数判为过长（0=不查长度）
 sprite:
   # 桌面立绘浮窗 + 系统托盘（PyQt6 独立进程，随主程序常驻）。
   # enabled=true 启动时显示浮窗；enabled=false 仅托盘常驻、浮窗可由托盘唤出。

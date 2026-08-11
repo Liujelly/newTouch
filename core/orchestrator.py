@@ -515,8 +515,13 @@ class Orchestrator:
                 earlier_summary=self._earlier_summary,
                 time_context=time_context,
             )
-            reply = await self._speaker.speak(stream, on_text=_on_reply_text,
-                                              translation_lang=translation_lang)
+            if self._cfg.get("reply_review.enabled", False):
+                # 审查机制开启：不走流式，先缓存全文->机械审查->不合格调 LLM 修正->_once 一次性播
+                reply = await self._speak_reviewed(stream, translation_lang,
+                                                   on_text=_on_reply_text)
+            else:
+                reply = await self._speaker.speak(stream, on_text=_on_reply_text,
+                                                  translation_lang=translation_lang)
         self._state.on_interaction(positive=True)
         self._awaiting_reply = False  # 用户回应了，清除等待标记
         self._state.save(self._state_path)
@@ -536,6 +541,66 @@ class Orchestrator:
         # 不阻塞下一轮对话。最多晚几秒情绪才更新，对陪伴体可接受。失败静默不改情绪。
         if reply:
             asyncio.create_task(self._apply_emotion_from_reply(user_text, reply))
+
+    async def _speak_reviewed(self, stream, translation_lang: str, on_text=None) -> str:
+        """审查机制下的回复播报（v2.68）：缓存全文->机械审查->不合格调 LLM 修正->_once 播。
+
+        与流式 speak 的区别：先读完整个 react_stream 攒成全文，剥掉 emo/face/时间标记
+        前缀后对可见正文做机械审查（review.review_reply）；不合格则调 cognition.fix_reply
+        在原回复上最小修正（非重新生成）。最终把（可能修正过的）正文一次性喂给 speaker.speak，
+        emo/face 元数据显式传入。失败回退用原回复，不阻断对话。
+
+        代价：不走流式（用户等全文+审查+修正后才出声）、不合格时多一轮 LLM 调用。
+        """
+        from .review import review_reply
+        from .action.speak import (
+            parse_emotion_prefix, parse_face_prefix,
+            strip_leading_time_marker, strip_all_emotion_tags,
+        )
+
+        # 1) 攒全文（react_stream 是 async generator，此处一次性读完）
+        raw = ""
+        async for chunk in stream:
+            raw += chunk
+
+        # 2) 剥前缀标签/时间标记，分离 emo / face 元数据与可见正文
+        text = strip_leading_time_marker(raw)
+        emo = None
+        face = None
+        while True:
+            e, text = parse_emotion_prefix(text)
+            if e:
+                emo = e
+                text = strip_leading_time_marker(text)
+                continue
+            f, text = parse_face_prefix(text)
+            if f:
+                face = f
+                text = strip_leading_time_marker(text)
+                continue
+            break
+        visible = strip_all_emotion_tags(text)
+
+        # 3) 机械审查；不合格调 LLM 在原回复上修正
+        issues = review_reply(visible, self._cfg)
+        if issues:
+            log.info("[review] 回复审查不合格: %s", issues)
+            try:
+                fixed = await self._cognition.fix_reply(visible, issues)
+            except Exception as e:  # noqa: BLE001
+                log.warning("[review] fix_reply 调用失败，回退原回复: %s", e)
+                fixed = ""
+            if fixed and fixed.strip():
+                visible = strip_all_emotion_tags(fixed.strip())
+
+        # 4) 一次性把最终正文喂给 speak（emo/face 显式传入，非流式）
+        async def _once():
+            yield visible
+
+        return await self._speaker.speak(
+            _once(), on_text=on_text,
+            emotion=emo, face=face, translation_lang=translation_lang,
+        )
 
     async def _apply_emotion_from_reply(self, user_text: str, reply: str) -> None:
         """反应路径异步情绪更新：判断这轮对话的情绪增量并应用。失败静默。"""

@@ -330,6 +330,14 @@ def get_config_schema() -> list:
             {"k": "memory_query_generation", "label": "记忆检索 LLM 生成 query", "type": "toggle",
              "help": "主动思考时 LLM 生成精准检索问题（主动回想路线 B）。成本：每次主动思考 +100 tokens"},
         ]},
+        {"section": "回复审查（实验）", "key": "reply_review", "fields": [
+            {"k": "_info", "label": "说明", "type": "info",
+             "help": "对 AI 反应路径回复做机械审查（循环重复/过长/系统标记泄漏），不合格再调一轮 LLM 在原回复上最小修正（非重新生成）。"},
+            {"k": "enabled", "label": "启用回复审查", "type": "toggle",
+             "help": "⚠️ 开启代价：反应路径回复【不走流式】（需缓存全文审查后再播，出声变慢），且不合格时【多一轮 LLM 调用】。默认关闭，按需开启。保存即生效。"},
+            {"k": "max_length", "label": "回复最长(字)", "type": "number", "min": 0, "max": 2000, "step": 50,
+             "help": "回复可见正文超过此字数判为过长并触发修正。0=不查长度。保存即生效。"},
+        ]},
         {"section": "立绘浮窗", "key": "sprite", "fields": [
             {"k": "enabled", "label": "启用桌面立绘浮窗", "type": "toggle", "restart": True,
              "help": "开=启动时显示桌面立绘浮窗；关=浮窗隐藏（托盘仍常驻，可由托盘随时唤出）。系统托盘随主程序常驻，需装 PyQt6。立绘库放 data/characters/{角色}/sprites/sprites.json。改后需重启"},

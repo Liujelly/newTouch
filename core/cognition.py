@@ -665,6 +665,28 @@ class Cognition:
             )
             return resp.choices[0].message.content or ""
 
+    async def fix_reply(self, text: str, issues: list[str]) -> str:
+        """回复修正器（v2.68）：在原回复基础上做最小修正，**不是重新生成**。
+
+        审查发现的问题（issues）作为约束喂给 LLM，要求保留原意/口吻/语言格式
+        （若有「日文+中文翻译括号」格式须保留）、长度适中，只做最小改动。
+        失败返回 ""（调用方回退用原回复，不阻断对话）。
+        """
+        sys_prompt = (
+            "你是回复修正器。下面是 AI 给用户的回复，审查发现以下问题：\n"
+            + "\n".join(f"- {i}" for i in issues) + "\n"
+            "请在原回复基础上做最小修正：保留原意、口吻、语言格式"
+            "（若有日文+中文翻译括号请保留）、长度适中。"
+            "不要重新生成、不要扩写、不要加解释或前缀。直接输出修正后的完整回复。"
+        )
+        msg = [{"role": "user", "content": text}]
+        try:
+            out = await self._complete(sys_prompt, msg)
+            return (out or "").strip()
+        except Exception as e:  # noqa: BLE001
+            log.warning("fix_reply 失败: %s", e)
+            return ""
+
     async def judge_emotion_delta(self, user_text: str, reply: str) -> dict:
         """反应路径：判断这轮对话对 ta 情绪的影响，返回 delta dict（失败返回 {}）。
 
