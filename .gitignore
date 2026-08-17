@@ -16,6 +16,7 @@ data/worldbooks/
 data/presets/
 data/audit.log
 data/error_log.txt
+data/self_config.json
 error_log.txt
 
 # 文档（进度/决策/架构等，按约定不入库）
