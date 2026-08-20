@@ -160,7 +160,7 @@ def _make_orch(*, quiet=False, last_check=0.0, min_check=60,
 
     # Speaker stub
     speaker = MagicMock()
-    async def _fake_speak(gen, emotion=None):
+    async def _fake_speak(gen, emotion=None, face=None, translation_lang="", on_text=None):
         async for _ in gen:
             pass
     speaker.speak = _fake_speak
@@ -237,7 +237,7 @@ def test_cooldown_blocks_llm():
     check("冷却内: proactive_think 未被调用",
           not cognition.proactive_think.called)
     check("冷却内: caption 仍注入 chat_history（素材保留）",
-          any("你看到了" in m.get("content", "") for m in orch._chat_history))
+          any("系统自动抓取到画面" in m.get("content", "") for m in orch._chat_history))
 
 
 # ── Case 4：勿扰时段不调 LLM ─────────────────────────────────

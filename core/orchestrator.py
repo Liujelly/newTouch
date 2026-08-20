@@ -14,7 +14,7 @@ import time
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 
-from .character import CharacterCard, WorldInfoManager, load_preset
+from .character import CharacterCard, WorldInfoManager, load_preset, _rel_time
 from .cognition import Cognition
 from .config import Config
 from .consciousness import ConsciousnessLog
@@ -113,7 +113,9 @@ class Orchestrator:
         self._last_vision_check = 0.0  # 上次视觉触发 LLM 判断的时间戳（独立节流）
         # A: 最近的"内心活动"滚动缓冲（含未说出口的 thought + look/speak 结局），
         # 注入下次独白，让 ta 的思绪连贯——记得自己刚才想过什么、看了/说了没。不进长期记忆。
-        self._recent_inner: list[str] = []
+        # 存 {ts, text}：注入时（_inner_for_prompt）按当下算相对时间前缀，避免隔了
+        # 思考冷却/隔夜后，条目里写的"刚开口说了"被 LLM 误读成刚刚发生。
+        self._recent_inner: list[dict] = []
         # 短期对话窗口长度（条数，user+assistant 各算一条）。可在 config/管理平台调。
         self._max_history = config.get("memory.chat_history_window", 40)
         # 增量压缩：窗口溢出达一批(_compress_batch)时，把最旧一批 LLM 浓缩进 _earlier_summary，
@@ -417,7 +419,7 @@ class Orchestrator:
                 preset=preset, reply_lang=reply_lang, translation_lang=translation_lang,
                 voice_emotions=voice_emotions,
                 face_emotions=face_emotions,
-                recent_inner=list(self._recent_inner),
+                recent_inner=self._inner_for_prompt(),
                 time_context=time_context,
             )
 
@@ -619,6 +621,8 @@ class Orchestrator:
         kind: "silent"(想了没说) / "look"(看了一眼) / "speak"(开口说了)。
         只保留最近 _recent_inner_max 条，注入下次独白 prompt。不落盘（重启随对话重建）。
         thought 截断防过长；speak 额外带上说了什么。
+        存 {ts, text}：ts 供 _inner_for_prompt 算相对时间前缀（条目文案里的"刚…"
+        只有在刚发生时才准确，隔久了要靠 [X小时前] 标记纠正）。
         """
         th = (thought or "").strip()
         if not th and not text:
@@ -630,10 +634,31 @@ class Orchestrator:
             entry = f"刚想看看ta在干嘛（{th}）" if th else "刚想看看ta在干嘛"
         else:  # silent
             entry = f"想了想没开口（{th}）" if th else "想了想没开口"
-        self._recent_inner.append(entry)
+        self._recent_inner.append({"ts": datetime.now().isoformat(timespec="seconds"), "text": entry})
         cap = self._cfg.get("proactive.recent_inner_max", 5)
         if len(self._recent_inner) > cap:
             self._recent_inner = self._recent_inner[-cap:] if cap > 0 else []
+
+    def _inner_for_prompt(self) -> list[str]:
+        """把 _recent_inner 转成注入独白 prompt 的字符串列表：条目前加相对时间标记。
+
+        与短期历史同语义（复用 _rel_time）：距今 < 2 分钟不加标记（条目文案本身
+        就是"刚…"，准确）；更久的加 "[X分钟前]/[X小时前] " 前缀，让 LLM 知道这条
+        内心活动是多久前的，而不是从"刚开口说了"字面误读成刚刚发生。
+        旧格式裸字符串（无 ts，测试直塞/历史遗留）退化为原文输出。
+        """
+        now = datetime.now()
+        out = []
+        for e in self._recent_inner:
+            if isinstance(e, dict):
+                text = e.get("text", "")
+                rel = _rel_time(e.get("ts", ""), now)
+            else:
+                text, rel = e, ""
+            if not text:
+                continue
+            out.append(f"[{rel}] {text}" if rel else text)
+        return out
 
     def _is_repeat_of_recent(self, reply: str) -> bool:
         """检查 reply 是否和最近主动开口说过的话高度相似（去重兜底）。
@@ -648,7 +673,9 @@ class Orchestrator:
         reply_clean = self._normalize_for_compare(reply)
         if not reply_clean:
             return False
-        for entry in self._recent_inner:
+        for e in self._recent_inner:
+            # 兼容裸字符串（旧格式/测试直塞）；运行时 _record_inner 存的是 {ts, text}
+            entry = e.get("text", "") if isinstance(e, dict) else e
             if "刚开口说了" not in entry:
                 continue
             # 提取「」内的内容
@@ -768,7 +795,7 @@ class Orchestrator:
                 face_emotions=face_emotions,
                 memories=memories, earlier_summary=self._earlier_summary,
                 time_context=time_context, think_seed=think_seed,
-                recent_inner=list(self._recent_inner),
+                recent_inner=self._inner_for_prompt(),
             )
         thought = result.get("thought", "")
 
@@ -792,6 +819,7 @@ class Orchestrator:
                         face_emotions=face_emotions,
                         memories=memories, earlier_summary=self._earlier_summary,
                         time_context=time_context, think_seed=think_seed,
+                        recent_inner=self._inner_for_prompt(),
                     )
                 thought = result.get("thought", "")
             else:
@@ -906,7 +934,7 @@ class Orchestrator:
                 face_emotions=face_emotions,
                 memories=[], earlier_summary=self._earlier_summary,
                 time_context=time_context, think_seed="",
-                recent_inner=list(self._recent_inner),
+                recent_inner=self._inner_for_prompt(),
             )
         thought = result.get("thought", "")
 
