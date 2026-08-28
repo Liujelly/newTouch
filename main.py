@@ -28,7 +28,7 @@ async def main() -> None:
     setup_logging(cfg)
     log = get_logger("main")
 
-    char_name = cfg.get("character.name", "默认")
+    char_name = cfg.get("character.name", "小触")
     card = CharacterCard.load(
         cfg.project_root / "data" / "characters" / char_name / "card.json"
     )

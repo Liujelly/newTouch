@@ -122,7 +122,7 @@ _VOICE_LIB_RESERVED = frozenset(("gpt_weights", "sovits_weights"))
 
 def _voice_lib_path(config: Config) -> Path:
     """按当前角色 card.json extensions.voice_lib 绑定找库文件；未绑定回退 library.json。"""
-    name = config.get("character.name", "默认")
+    name = config.get("character.name", "小触")
     voices_dir = config.project_root / "data" / "voices"
     card_path = config.project_root / "data" / "characters" / name / "card.json"
     lib = "library"

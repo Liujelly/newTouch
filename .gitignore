@@ -8,6 +8,12 @@
 data/config.yaml
 data/config.local.yaml
 data/characters/
+# 仓库自带的初始角色：只提交角色卡，运行时聊天/意识流/状态仍保持忽略。
+!data/characters/
+data/characters/*
+!data/characters/小触/
+data/characters/小触/*
+!data/characters/小触/card.json
 data/memory_db/
 data/stt_cache/
 data/logs/

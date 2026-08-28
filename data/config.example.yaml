@@ -3,7 +3,7 @@ user_persona:
   description: ''
   bound_worldinfo: null
 character:
-  name: 欸嘿
+  name: 小触
   current_preset: ''
   preset_enabled: true
 modules:

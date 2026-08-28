@@ -63,7 +63,7 @@ class MemoryStore:
     def __init__(self, config: Config):
         self._cfg = config
         self._enabled = config.get("memory.enabled", False)
-        self._agent = config.get("character.name", "默认")
+        self._agent = config.get("character.name", "小触")
         self._mem = None
         self._extract_client = None  # 续写抽取用的同步 OpenAI client，懒加载
         if self._enabled:

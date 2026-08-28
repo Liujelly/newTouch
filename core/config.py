@@ -93,7 +93,7 @@ class Config:
 
     def char_data_dir(self, char_name: str | None = None) -> Path:
         """角色专属数据目录 data/characters/{name}/，不存在时自动创建。"""
-        name = char_name or self.get("character.name", "默认")
+        name = char_name or self.get("character.name", "小触")
         d = _PROJECT_ROOT / "data" / "characters" / name
         d.mkdir(parents=True, exist_ok=True)
         return d

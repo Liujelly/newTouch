@@ -87,34 +87,28 @@ VLM、长期记忆和 Tavily 等服务如使用不同密钥，也应分别配置
 
 ### 3. 准备角色卡
 
-`character.name` 必须对应以下文件：
+仓库已经内置初始角色“小触”，`data/config.example.yaml` 也默认选中该角色。完成上一步的配置复制后，无需额外准备角色卡即可启动。
+
+角色配置中的 `character.name` 必须对应以下文件：
 
 ```text
 data/characters/<角色名>/card.json
 ```
 
-最小角色卡示例：
+内置角色卡位于：
 
-```json
-{
-  "name": "默认",
-  "description": "PC 中的 AI 陪伴者",
-  "personality": "自然、体贴，有自己的想法",
-  "scenario": "与你共同生活在日常环境中",
-  "first_mes": "你好，我在这里。",
-  "system_prompt": "始终保持角色身份，自然地与用户相处。",
-  "extensions": {}
-}
+```text
+data/characters/小触/card.json
 ```
 
-将配置同步为：
+默认配置为：
 
 ```yaml
 character:
-  name: 默认
+  name: 小触
 ```
 
-也可以先放入已有的 SillyTavern JSON 角色卡，启动后再通过管理平台编辑和切换。
+你也可以新增其他角色目录，放入已有的 SillyTavern JSON 角色卡，再通过管理平台编辑和切换。聊天记录、意识流、状态和角色素材仍是本地运行数据，不会随初始角色卡提交。
 
 ### 4. 选择输入与输出方式
 
@@ -154,7 +148,7 @@ python main.py
 
 默认管理平台地址：<http://127.0.0.1:8080>
 
-如果安装了 PyQt6，系统托盘会随主程序启动。`sprite.enabled` 仅决定启动时是否显示立绘，关闭时仍可从托盘唤出。
+如果安装了 PyQt6（执行 `pip install -r requirements.txt` 时会自动安装），系统托盘会随主程序启动。`sprite.enabled` 仅决定启动时是否显示立绘，关闭时仍可从托盘唤出。
 
 ## 常用配置
 

@@ -166,7 +166,7 @@ class Orchestrator:
         用目录名（config.character.name，隔离键）找立绘库，不用 card.name（展示名）——
         立绘库按角色目录存（data/characters/{目录名}/），目录名与展示名可能不同（v2.21）。
         """
-        char_dir_name = self._cfg.get("character.name", "默认")
+        char_dir_name = self._cfg.get("character.name", "小触")
         return load_face_emotions(self._cfg, char_dir_name)
 
     def _load_recent_history(self) -> None:
@@ -240,7 +240,7 @@ class Orchestrator:
 
     def reload_card(self) -> None:
         """热重载当前角色卡（管理平台保存角色卡后调用，立即生效语言等设置）。"""
-        card_path = self._cfg.project_root / "data" / "characters" / self._cfg.get("character.name", "默认") / "card.json"
+        card_path = self._cfg.project_root / "data" / "characters" / self._cfg.get("character.name", "小触") / "card.json"
         if card_path.exists():
             self._card = CharacterCard.load(card_path)
             # 重建世界书管理器（可能改了 extensions.world）
