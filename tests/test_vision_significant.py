@@ -8,6 +8,8 @@
   5. _handle_vision_significant: LLM 返回 silent → 不 speak
   6. _handle_vision_significant: LLM 返回 speak → 调 speaker，
      且 gatekeeper.record_spoke 不被调用（不占每小时配额）
+  7. LLM 返回 look → 强制刷新画面 → 写回上下文 → 二次判断
+  8. 主动路径不暴露 look 工具，视觉只走单次结构化 action=look
 
 运行: cd D:\\code\\self\\newTouch && python tests/test_vision_significant.py
 """
@@ -118,7 +120,7 @@ def test_event_type_dispatch():
 # ── 构造最小 Orchestrator stub ─────────────────────────────────
 
 def _make_orch(*, quiet=False, last_check=0.0, min_check=60,
-               llm_action="silent", llm_text=""):
+               llm_action="silent", llm_text="", vision_enabled=False):
     """返回一个只含 _handle_vision_significant 所需字段的 Orchestrator 实例。"""
     from core.orchestrator import Orchestrator
     from core.state import EmotionState
@@ -135,6 +137,7 @@ def _make_orch(*, quiet=False, last_check=0.0, min_check=60,
         "perception": {"vision": {
             "min_check_interval_s": min_check,
             "significant_threshold": 0.30,
+            "enabled": vision_enabled,
         }},
         "character": {"name": "默认"},
     }
@@ -186,6 +189,8 @@ def _make_orch(*, quiet=False, last_check=0.0, min_check=60,
     orch._gate = gate
     orch._log = log
     orch._vision = MagicMock()
+    if vision_enabled:
+        orch._vision.look_now = AsyncMock(return_value=MagicMock(caption="现在画面里还是他"))
     orch._chat_history = []
     orch._user_name = "测试用户"
     orch._char_dir = tmp / "data"
@@ -300,6 +305,106 @@ def test_llm_speak_no_gatekeeper():
           any("你回来啦" in m.get("content", "") for m in orch._chat_history))
 
 
+def test_llm_look_triggers_second_caption_and_speak():
+    orch, gate, cognition = _make_orch(
+        last_check=0.0, min_check=0,
+        llm_action="look", llm_text="",
+        vision_enabled=True,
+    )
+    cognition.proactive_think = AsyncMock(side_effect=[
+        {"action": "look", "thought": "再看一眼确认", "text": "",
+         "emotion": None, "emotion_delta": {}},
+        {"action": "speak", "thought": "确认是他", "text": "老师，你回来啦？",
+         "emotion": None, "emotion_delta": {}},
+    ])
+    event = Event(priority=EventPriority.NORMAL, type=EventType.VISION_SIGNIFICANT,
+                  payload={"caption": "一个人走进房间", "diff_score": 0.71})
+
+    loop = asyncio.new_event_loop()
+    loop.run_until_complete(orch._handle_vision_significant(event))
+    loop.close()
+
+    check("LLM look: look_now 强制刷新",
+          orch._vision.look_now.call_args.kwargs.get("force_refresh") is True)
+    check("LLM look: 第二次 proactive_think 收到新 caption",
+          cognition.proactive_think.call_count == 2
+          and "现在画面里还是他" in cognition.proactive_think.call_args_list[1].kwargs["trigger_reason"]
+          and cognition.proactive_think.call_args_list[1].kwargs["can_look"] is False)
+    check("LLM look: 新 caption 写回真实上下文",
+          orch._last_vision == "现在画面里还是他"
+          and any("主动复查看到：现在画面里还是他" in m.get("content", "")
+                  for m in orch._chat_history))
+    check("LLM look: 第二次判断后开口",
+          any("老师，你回来啦？" in m.get("content", "") for m in orch._chat_history))
+    check("LLM look: 视觉记忆使用复查 caption",
+          "现在画面里还是他" in orch._memory.add.call_args.args[0])
+
+
+def test_force_refresh_bypasses_look_cooldown():
+    import time
+    import numpy as np
+    from core.perception.vision import Vision, VisionCaption
+
+    vision = Vision.__new__(Vision)
+    vision._enabled = True
+    vision._running = True
+    vision._min_look_interval = 30
+    vision._last_look_ts = time.time()
+    vision._latest = VisionCaption("旧 caption", time.time(), 0.5)
+    vision._latest_frame_raw = np.zeros((8, 8, 3), dtype=np.uint8)
+    vision._vlm_caption = AsyncMock(
+        return_value=VisionCaption("强制刷新后的 caption", time.time(), 0.0))
+
+    loop = asyncio.new_event_loop()
+    cached = loop.run_until_complete(vision.look_now())
+    refreshed = loop.run_until_complete(vision.look_now(force_refresh=True))
+    loop.close()
+
+    check("look_now: 普通调用在冷却内返回缓存", cached.caption == "旧 caption")
+    check("look_now: force_refresh 冷却内仍重新调 VLM",
+          refreshed.caption == "强制刷新后的 caption"
+          and vision._vlm_caption.call_count == 1)
+
+
+def test_proactive_tools_exclude_look():
+    from core.cognition import Cognition
+    from core.character import CharacterCard
+
+    cognition = Cognition.__new__(Cognition)
+    cognition._cfg = Config({"token_intensive": {"proactive_cot": False}})
+    cognition._backend = "openai"
+    cognition._model = "test"
+    cognition._proactive_openai = AsyncMock(return_value={
+        "action": "silent", "thought": "", "text": "",
+    })
+    card = CharacterCard(name="测试", description="", personality="",
+                         scenario="", first_mes="", system_prompt="",
+                         extensions={})
+    schemas = [
+        {"name": "look", "description": "", "input_schema": {}},
+        {"name": "get_time", "description": "", "input_schema": {}},
+    ]
+
+    async def run(can_look):
+        with patch("core.cognition.registry.get_schemas", return_value=schemas):
+            await cognition.proactive_think(
+                card=card, user_name="用户", trigger_reason="测试",
+                emotion_summary="平静", chat_history=[], elapsed_desc="刚刚",
+                can_look=can_look,
+            )
+        return cognition._proactive_openai.call_args.args[2]
+
+    loop = asyncio.new_event_loop()
+    without_look = loop.run_until_complete(run(False))
+    with_look = loop.run_until_complete(run(True))
+    loop.close()
+
+    check("主动工具: can_look=False 不暴露 look",
+          {tool["name"] for tool in without_look} == {"get_time"})
+    check("主动工具: can_look=True 也不暴露 look（改走 action）",
+          {tool["name"] for tool in with_look} == {"get_time"})
+
+
 # ── 运行所有 ─────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -319,6 +424,13 @@ if __name__ == "__main__":
 
     print("\n[6] LLM speak → 开口但不占配额")
     test_llm_speak_no_gatekeeper()
+
+    print("\n[7] LLM look -> 真实复查后二次判断")
+    test_llm_look_triggers_second_caption_and_speak()
+
+    print("\n[8] 强制刷新与工具硬限制")
+    test_force_refresh_bypasses_look_cooldown()
+    test_proactive_tools_exclude_look()
 
     passed = sum(1 for _, ok, _ in _results if ok)
     total = len(_results)

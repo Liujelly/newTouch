@@ -496,7 +496,11 @@ class Cognition:
         )
 
         # 工具循环（主动路径：非流式，返回结构化 JSON 或思维链）
-        tools = registry.get_schemas()
+        # 主动路径的视觉由结构化 action=look 交给 Orchestrator 执行并限制为一次。
+        # 不把全局 look 工具交给主动工具循环，否则模型可能在一次思考里重复调用，
+        # 绕过 can_look=False 与单次复查约束。反应路径仍保留 look 工具。
+        tools = [tool for tool in registry.get_schemas()
+                 if tool.get("name") != "look"]
         log.info("[LLM] 主动路径调用 %s/%s（触发：%s，CoT=%s）",
                  self._backend, self._model, trigger_reason, use_cot)
         max_rounds = 5  # 防死循环

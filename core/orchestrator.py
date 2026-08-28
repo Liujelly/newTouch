@@ -408,6 +408,8 @@ class Orchestrator:
         face_emotions = self._face_emotions()
         elapsed = time.time() - self._state.last_interaction
         time_context = _time_context(datetime.now())
+        can_look = (self._vision is not None
+                    and self._cfg.get("perception.vision.enabled", False))
 
         async with self._cognition_lock:
             result = await self._cognition.proactive_think(
@@ -415,7 +417,7 @@ class Orchestrator:
                 trigger_reason=trigger_reason,
                 emotion_summary=self._state.summary(),
                 chat_history=self._chat_history,
-                elapsed_desc=_elapsed_desc(elapsed), can_look=False,
+                elapsed_desc=_elapsed_desc(elapsed), can_look=can_look,
                 preset=preset, reply_lang=reply_lang, translation_lang=translation_lang,
                 voice_emotions=voice_emotions,
                 face_emotions=face_emotions,
@@ -424,6 +426,37 @@ class Orchestrator:
             )
 
         thought = result.get("thought", "")
+        if result.get("action") == "look" and can_look:
+            self._log.record(trigger="视觉·显著变化·主动看", action="look",
+                             thought=thought, emotion=self._state.snapshot())
+            vc = await self._vision.look_now(force_refresh=True)
+            if vc:
+                self._last_vision = vc.caption
+                self._chat_history.append({
+                    "role": "user",
+                    "content": f"（主动复查看到：{vc.caption}）",
+                    "ts": datetime.now().isoformat(timespec="seconds"),
+                })
+                await self._compact_history()
+                look_ctx = list(self._chat_history)
+                async with self._cognition_lock:
+                    result = await self._cognition.proactive_think(
+                        card=self._card, user_name=self._user_name,
+                        trigger_reason=f"刚主动看了一眼：{vc.caption}",
+                        emotion_summary=self._state.summary(),
+                        chat_history=look_ctx,
+                        elapsed_desc=_elapsed_desc(elapsed), can_look=False,
+                        preset=preset, reply_lang=reply_lang,
+                        translation_lang=translation_lang,
+                        voice_emotions=voice_emotions,
+                        face_emotions=face_emotions,
+                        recent_inner=self._inner_for_prompt(),
+                        time_context=time_context,
+                    )
+                thought = result.get("thought", "")
+            else:
+                result = {"action": "silent", "thought": thought, "text": ""}
+
         reply = result.get("text", "")
         # 兜底扒掉开头被复读的系统时间标记 [X分钟前]（LLM 照抄历史标记进独白 text）
         reply = strip_leading_time_marker(reply)
@@ -454,7 +487,7 @@ class Orchestrator:
         self._state.save(self._state_path)
 
         self._memory.add(
-            f"我看到{caption}后对{self._user_name}说:{reply}",
+            f"我看到{self._last_vision}后对{self._user_name}说:{reply}",
             self._state.snapshot(), tags=["对话", "主动", "视觉"],
         )
         self._chat_history.append({

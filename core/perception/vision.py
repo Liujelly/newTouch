@@ -102,8 +102,11 @@ class Vision:
         log.warning("未检测到可用摄像头，视觉将无法抓帧")
         return cfg_idx or 0
 
-    async def look_now(self) -> VisionCaption | None:
-        """主动工具：立即抓一帧送 VLM (受 min_look_interval 限制)。
+    async def look_now(self, force_refresh: bool = False) -> VisionCaption | None:
+        """主动工具：立即抓一帧送 VLM；默认受 min_look_interval 限制。
+
+        force_refresh=True 用于显著视觉变化后的确认复查：即使刚生成过被动 caption，
+        也基于当前最新原始帧重新调用 VLM，避免把旧 caption 当成“再看一眼”的结果。
 
         摄像头同一索引不能被两个 capture 同时独占（Windows MSMF 报 -1072873821）。
         所以被动抽帧循环在跑时，直接取它缓存的最新帧，不另开摄像头；只有被动循环
@@ -112,7 +115,7 @@ class Vision:
         if not self._enabled:
             return None
         now = time.time()
-        if now - self._last_look_ts < self._min_look_interval:
+        if not force_refresh and now - self._last_look_ts < self._min_look_interval:
             return self._latest
 
         frame = None
