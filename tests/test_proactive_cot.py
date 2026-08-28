@@ -227,7 +227,7 @@ def test_unreachable_rule_in_prompt():
 
 
 def test_presence_greeting_rule_in_prompt():
-    """v2.67：主动独白指令须含"不要凭猜测就说对方回来了"规则，防止重构改丢。
+    """主动独白不能凭空欢迎，但明确的归来画面无需先核验身份。
 
     纯 prompt 规则无单元效果测试（效果靠真实 LLM），这里只断言规则文本
     在两个版本（JSON / CoT）组装出的 monologue 里都存在。
@@ -251,8 +251,10 @@ def test_presence_greeting_rule_in_prompt():
 
     for label, mono in (("JSON", mono_json), ("CoT", mono_cot)):
         assert "欢迎回来" in mono, f"{label} 版缺'欢迎回来'规则"
-        assert "凭猜测" in mono, f"{label} 版缺'凭猜测'判断"
-        assert "看到" in mono and "本人" in mono, f"{label} 版缺'看到本人才能打招呼'约束"
+        assert "时间或空场景" in mono, f"{label} 版缺空场景防误判约束"
+        assert "归来迹象" in mono, f"{label} 版缺归来画面判断"
+        assert "不必先追问或核验" in mono, f"{label} 版仍可能强制身份核验"
+        assert "回来了吗" not in mono, f"{label} 版不应引导先询问是否回来"
     print("✅ 通过\n")
 
 

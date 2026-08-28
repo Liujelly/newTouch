@@ -41,9 +41,20 @@ class Event:
         self._seq = next(_seq)
 
 
-def user_speech(text: str, speaker_id: str | None = None) -> Event:
+def user_speech(
+    text: str,
+    speaker_id: str | None = None,
+    *,
+    source: str = "text",
+    uncertain_audio: bool = False,
+) -> Event:
     return Event(
         priority=EventPriority.URGENT,
         type=EventType.USER_SPEECH,
-        payload={"text": text, "speaker_id": speaker_id},
+        payload={
+            "text": text,
+            "speaker_id": speaker_id,
+            "source": source,
+            "uncertain_audio": uncertain_audio,
+        },
     )

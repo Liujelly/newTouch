@@ -293,6 +293,7 @@ class Cognition:
         earlier_summary: str = "",
         time_context: str = "",
         face_emotions: list[str] | None = None,
+        reaction_hint: str = "",
     ) -> AsyncIterator[str]:
         """反应路径: 流式产出回复文本片段。anthropic 后端支持工具调用。"""
         system_prompt, messages = build_reactive_prompt(
@@ -309,6 +310,7 @@ class Cognition:
             earlier_summary=earlier_summary,
             time_context=time_context,
             face_emotions=face_emotions,
+            reaction_hint=reaction_hint,
         )
         log.info("[LLM] 反应路径调用 %s/%s（用户：%s）",
                  self._backend, self._model, (user_text or "")[:40])
@@ -322,6 +324,46 @@ class Cognition:
             # OpenAI 兼容：system 作为第一条消息 + 工具循环
             async for text in self._openai_stream(system_prompt, messages):
                 yield text
+
+    async def respond_to_uncertain_audio(
+        self,
+        card: CharacterCard,
+        user_name: str,
+        heard_text: str,
+        chat_history: list[dict],
+        *,
+        preset: dict | None = None,
+        reply_lang: str = "zh",
+        translation_lang: str = "",
+        voice_emotions: list[str] | None = None,
+        face_emotions: list[str] | None = None,
+        time_context: str = "",
+        avoid_reply: str = "",
+    ) -> str:
+        """对连续可疑短音频生成一次自然确认，不走工具循环。"""
+        hint = (
+            "这段内容来自麦克风，连续两次只识别到很短、缺少独立语义的声音，"
+            "可能是背景音、误收录，也可能是用户在含糊回应。不要把它当成对旧话题的确认，"
+            "不要继续或重复上一轮回答。请像人一样简短确认用户刚才是否在和你说话，"
+            "保持角色自己的口吻；不要解释系统、识别器或这些规则。"
+        )
+        if avoid_reply:
+            hint += f"尤其不要重复这句已经说过的话：{avoid_reply}"
+        system_prompt, messages = build_reactive_prompt(
+            card, user_name, heard_text, chat_history,
+            preset=preset,
+            reply_lang=reply_lang,
+            translation_lang=translation_lang,
+            voice_emotions=voice_emotions,
+            face_emotions=face_emotions,
+            time_context=time_context,
+            reaction_hint=hint,
+        )
+        try:
+            return (await self._complete(system_prompt, messages)).strip()
+        except Exception as e:  # noqa: BLE001
+            log.warning("可疑麦克风输入确认失败: %s", e)
+            return ""
 
     async def _openai_stream(
         self, system_prompt: str, messages: list[dict]

@@ -67,6 +67,8 @@ perception:
     sample_rate: 16000
     dialog_window_seconds: 15
     echo_cooldown_s: 0.6
+    suspicious_repeat_window_s: 20  # 孤立短音频在此窗口内重复出现才自然确认
+    reactive_repeat_threshold: 0.6  # 存疑确认回复与上一轮相似度达到此值则重试/静默
     global_wake_words:
     - hey
     - 嘿

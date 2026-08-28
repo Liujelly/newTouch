@@ -140,6 +140,11 @@ modules:
 - `faster-whisper`：多语言通用，CPU `int8` 可用。
 - `funasr`：SenseVoice 中文场景更快，并可保留语音情绪标签。
 
+麦克风输入会分层处理误收录：SenseVoice 明确标记为 BGM、音乐或噪声的片段直接忽略；
+缺少近期对话承接的“嗯 / Yeah / 啊”等孤立短音频第一次不会触发回复，短时间内重复出现时
+才由角色自然确认是否在和自己说话。存疑输入不会刷新互动状态、清除等待状态或写入长期记忆，
+并会避免复述上一轮回复。
+
 ### 5. 启动
 
 ```powershell
@@ -147,6 +152,8 @@ python main.py
 ```
 
 默认管理平台地址：<http://127.0.0.1:8080>
+
+管理平台启动完成后会自动用系统默认浏览器打开控制台。
 
 如果安装了 PyQt6（执行 `pip install -r requirements.txt` 时会自动安装），系统托盘会随主程序启动。`sprite.enabled` 仅决定启动时是否显示立绘，关闭时仍可从托盘唤出。
 
@@ -160,7 +167,7 @@ python main.py
 | `modules.vlm` | 视觉模型与 caption 输出参数 |
 | `modules.stt` / `modules.vad` | 语音识别和人声检测 |
 | `modules.tts` | GPT-SoVITS、回复语言、参考音频和合成参数 |
-| `perception.audio` | 麦克风、对话窗口与回声冷却 |
+| `perception.audio` | 麦克风、对话窗口、回声冷却与短音频误收录处理 |
 | `perception.vision` | 摄像头、帧差阈值、caption 与主动查看冷却 |
 | `proactive` | 心跳、主动频率、勿扰、黏人度、未回应和去重 |
 | `memory` | mem0、embedding、短期窗口、摘要与自动召回 |

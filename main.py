@@ -167,9 +167,11 @@ async def main() -> None:
     # 管理平台（可选，ui.enable_webui 开关）；与主程序共享事件循环，Ctrl+C 一起关
     admin_server = None
     admin_task = None
+    admin_open_task = None
     if cfg.get("ui.enable_webui", False):
         import uvicorn
         from api import admin as admin_module
+        from core.webui import browser_url, open_when_started
         admin_module.set_enqueue(orch.enqueue)
         admin_module.set_switch_character(orch.switch_character)
         admin_module.set_reload_card(orch.reload_card)
@@ -181,7 +183,20 @@ async def main() -> None:
         admin_cfg = uvicorn.Config(admin_module.app, host=host, port=port, log_level="warning")
         admin_server = uvicorn.Server(admin_cfg)
         admin_task = asyncio.create_task(admin_server.serve())
-        log.info("管理平台: http://%s:%s", host, port)
+        admin_url = browser_url(host, port)
+        log.info("管理平台: %s", admin_url)
+
+        async def _open_admin_console() -> None:
+            try:
+                opened = await open_when_started(admin_server, admin_url)
+                if opened:
+                    log.info("已自动打开管理控制台")
+                else:
+                    log.warning("管理平台未在等待时间内就绪，未自动打开浏览器")
+            except Exception as e:  # noqa: BLE001
+                log.warning("自动打开管理控制台失败: %s", e)
+
+        admin_open_task = asyncio.create_task(_open_admin_console())
 
     if card.first_mes:
         print(f"\n{card.name} > {card.first_mes}")
@@ -236,6 +251,10 @@ async def main() -> None:
         # `await receive()` 处抛出 CancelledError 打到 stderr（无害但是噪音 traceback）。
         if admin_server:
             admin_server.should_exit = True
+        if admin_open_task and not admin_open_task.done():
+            admin_open_task.cancel()
+        if admin_open_task:
+            await asyncio.gather(admin_open_task, return_exceptions=True)
         if admin_task:
             try:
                 await asyncio.wait_for(admin_task, timeout=5)

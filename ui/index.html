@@ -92,12 +92,28 @@ nav button.active .tab-ico{opacity:1;color:var(--amber)}
 .info-box{padding:9px 13px;background:#F4F4F5;border:1px solid var(--line-2);border-radius:var(--rad);color:var(--ink-2);font-size:12.5px;line-height:1.5}
 /* 配置页侧边导航 */
 .config-layout{display:flex;gap:18px;align-items:flex-start}
-.config-aside{position:sticky;top:0;flex-shrink:0;width:148px;max-height:calc(100vh - 130px);overflow-y:auto;padding:10px 0;background:#fff;border:1px solid var(--line-2);border-radius:var(--rad);box-shadow:0 2px 12px 0 rgba(0,0,0,.04)}
+.config-aside{position:sticky;top:0;flex-shrink:0;width:168px;max-height:calc(100vh - 130px);display:flex;flex-direction:column;gap:10px}
 .config-aside-hd{font-size:11px;color:var(--ink-3);padding:2px 14px 8px;letter-spacing:.05em;font-weight:600;text-transform:uppercase}
+.config-aside-nav{min-height:0;max-height:calc(100vh - 250px);overflow-y:auto;padding:10px 0 8px;background:#fff;border:1px solid var(--line-2);border-radius:var(--rad);box-shadow:0 2px 12px 0 rgba(0,0,0,.04)}
 .config-aside-item{display:block;padding:8px 14px;font-size:12.5px;color:var(--ink-2);cursor:pointer;border-left:2px solid transparent;transition:.15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .config-aside-item:hover{color:var(--amber);background:#F4F4F5}
 .config-aside-item.active{color:var(--amber);border-left-color:var(--amber);background:rgba(64,158,255,.06);font-weight:600}
+.config-aside-save{flex-shrink:0;padding:12px;background:linear-gradient(180deg,#fff 0%,#f8fbff 100%);border:1px solid var(--line-2);border-radius:var(--rad);box-shadow:0 2px 12px 0 rgba(0,0,0,.04)}
+.config-save-btn{width:100%;display:flex;align-items:center;justify-content:center;gap:7px;padding:9px 10px}
+.config-save-btn svg{width:14px;height:14px}
+.config-save-help{margin-top:7px;color:var(--ink-3);font-size:10.5px;line-height:1.45;text-align:center}
 .config-main{flex:1;min-width:0}
+@media (max-width:760px){
+  .config-layout{display:block}
+  .config-aside{position:sticky;top:0;z-index:20;width:100%;max-height:none;margin-bottom:14px;gap:8px}
+  .config-aside-nav{display:flex;max-height:none;overflow-x:auto;overflow-y:hidden;padding:8px 6px}
+  .config-aside-hd{display:none}
+  .config-aside-item{flex:0 0 auto;border-left:none;border-bottom:2px solid transparent;padding:7px 10px}
+  .config-aside-item.active{border-left-color:transparent;border-bottom-color:var(--amber)}
+  .config-aside-save{display:flex;align-items:center;gap:10px;padding:9px 10px}
+  .config-save-btn{width:auto;min-width:124px}
+  .config-save-help{margin:0;text-align:left}
+}
 /* 工具栏里的输入框/下拉 —— 统一宽度，去掉各行参差不齐的内联 width */
 .tb-bar{display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap}
 .tb-in{width:170px!important}
@@ -346,10 +362,19 @@ code{font-family:var(--mono);font-size:11.5px;background:rgba(64,158,255,.1);col
     <div v-if="tab==='config'" class="config-layout">
       <!-- 侧边导航：配置分区快速跳转 + 高亮当前可视区 -->
       <aside class="config-aside">
-        <div class="config-aside-hd">配置分区</div>
-        <a v-for="(sec,i) in schema" :key="sec.section"
-           class="config-aside-item" :class="{active:activeSec===i}"
-           @click="scrollToSec(i)" :title="sec.section">{{sec.section}}</a>
+        <div class="config-aside-nav">
+          <div class="config-aside-hd">配置分区</div>
+          <a v-for="(sec,i) in schema" :key="sec.section"
+             class="config-aside-item" :class="{active:activeSec===i}"
+             @click="scrollToSec(i)" :title="sec.section">{{sec.section}}</a>
+        </div>
+        <div class="config-aside-save">
+          <button type="button" class="btn btn-primary config-save-btn" @click="saveCfg">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            保存配置
+          </button>
+          <div class="config-save-help">多数配置保存后即时生效<br>标记项需重启</div>
+        </div>
       </aside>
       <div class="config-main">
       <div class="card config-card" v-for="(sec,i) in schema" :key="sec.section" :data-sec="i" ref="cfgCards">
@@ -389,10 +414,6 @@ code{font-family:var(--mono);font-size:11.5px;background:rgba(64,158,255,.1);col
             <div v-if="f.help && f.type!=='info'" class="field-help">{{f.help}}</div>
           </div>
         </div>
-      </div>
-      <div style="padding:4px 0 12px">
-        <button class="btn btn-primary" @click="saveCfg">保存所有配置</button>
-        <span style="margin-left:10px;font-size:11px;color:#64748b">保存后多数配置即时生效；标「需重启」的项改完需重启 main.py。</span>
       </div>
       </div>
     </div>
@@ -854,7 +875,7 @@ code{font-family:var(--mono);font-size:11.5px;background:rgba(64,158,255,.1);col
     </div>
 
   </div>
-  <div class="build-stamp">UI build · el-ui · 20260629f</div>
+  <div class="build-stamp">UI build · el-ui · 20260828j</div>
 </div>
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 <script>

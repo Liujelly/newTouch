@@ -16,7 +16,9 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import time
+from datetime import datetime
 from enum import Enum
 
 from ..config import Config
@@ -24,6 +26,79 @@ from ..events import Event, EventPriority, EventType, user_speech
 from ..logger import get_logger
 
 log = get_logger("audio")
+
+
+_SENSEVOICE_TAG = re.compile(r"<\|([^|>]+)\|>")
+_NON_SPEECH_TAGS = {"bgm", "music", "noise"}
+_SHORT_ACKS = {
+    "嗯", "恩", "唔", "啊", "哦", "噢", "诶", "额", "呃", "对", "是", "好", "好的", "行",
+    "yes", "yeah", "yep", "ok", "okay", "uh", "um", "hmm", "mhm", "no", "nah",
+    "うん", "はい", "ええ", "あ", "そう",
+}
+def _spoken_text(text: str) -> str:
+    """移除 SenseVoice 标签，得到用于本地判断的可见文本。"""
+    return _SENSEVOICE_TAG.sub("", text or "").strip()
+
+
+def _has_non_speech_tag(text: str) -> bool:
+    """SenseVoice 明确标成 BGM/Music/Noise 的片段不进入认知链路。"""
+    tags = {tag.strip().lower() for tag in _SENSEVOICE_TAG.findall(text or "")}
+    return bool(tags & _NON_SPEECH_TAGS)
+
+
+def _is_short_ack(text: str) -> bool:
+    """识别缺少独立语义的短回应，避免对话窗口把背景音直接当用户回复。"""
+    spoken = _spoken_text(text).strip(" \t\r\n，。！？!?、…~～,.\"'“”‘’")
+    return spoken.casefold() in _SHORT_ACKS
+
+
+def _relative_time(ts: str, now: datetime) -> str:
+    try:
+        dt = datetime.fromisoformat(ts)
+    except (TypeError, ValueError):
+        return ""
+    seconds = max(0, (now - dt).total_seconds())
+    if seconds < 120:
+        return "刚刚"
+    if seconds < 3600:
+        return f"{int(seconds // 60)}分钟前"
+    if seconds < 86400:
+        return f"{int(seconds // 3600)}小时前"
+    return f"{int(seconds // 86400)}天前"
+
+
+def _recent_context(chat_history: list[dict], limit: int = 4) -> str:
+    """给音频分类器的历史附上时间，避免把数小时前的话当作当前上下文。"""
+    now = datetime.now()
+    lines = []
+    for message in chat_history[-limit:]:
+        relative = _relative_time(message.get("ts", ""), now)
+        prefix = f"[{relative}] " if relative else ""
+        lines.append(f"{prefix}{message.get('role', '')}: {message.get('content', '')}")
+    return "\n".join(lines)
+
+
+def _recent_assistant_supports_short_reply(chat_history: list[dict]) -> bool:
+    """近期确有角色发言时，允许“嗯/好/yeah”作为正常简短承接。"""
+    now = datetime.now()
+    for message in reversed(chat_history):
+        role = message.get("role")
+        if role not in ("user", "assistant"):
+            continue
+        if role != "assistant":
+            return False
+        ts = message.get("ts", "")
+        if not ts:
+            return False
+        try:
+            age = (now - datetime.fromisoformat(ts)).total_seconds()
+        except (TypeError, ValueError):
+            return False
+        if age < 0 or age > 30:
+            return False
+        content = _spoken_text(message.get("content", "")).rstrip()
+        return bool(content)
+    return False
 
 
 # ─────────────────── TextInput ────────────────────────────────────────────
@@ -67,6 +142,7 @@ class AudioClassification(Enum):
     OTHER = "other"
     SELF = "self"
     IGNORE = "ignore"
+    SUSPICIOUS = "suspicious"
 
 
 class Classifier:
@@ -86,6 +162,11 @@ class Classifier:
         self._backend = llm_backend   # "anthropic" | "openai"
         self._model = llm_model
         self._window_until: float = 0.0
+        self._last_short_ack = ""
+        self._last_short_ack_at = 0.0
+        self._short_ack_repeat_window = config.get(
+            "perception.audio.suspicious_repeat_window_s", 20
+        )
 
     def _build_wake_words(self) -> list[str]:
         """构建唤醒词列表：角色名 + 角色卡自定义 + 全局通用词。"""
@@ -123,6 +204,9 @@ class Classifier:
 
     async def classify(self, text: str, chat_history: list[dict]) -> AudioClassification:
         """三步决策：唤醒词（完整词匹配）→ 对话窗口 → LLM 分类。"""
+        if _has_non_speech_tag(text):
+            return AudioClassification.IGNORE
+
         text_lower = text.lower()
 
         # 唤醒词完整匹配：防止子串误触发（如"小触摸屏"、"newtouchpad"）
@@ -149,12 +233,27 @@ class Classifier:
 
                 start = pos + 1
 
+        if _is_short_ack(text):
+            now = time.time()
+            spoken = _spoken_text(text).casefold()
+            repeated = (
+                spoken == self._last_short_ack
+                and now - self._last_short_ack_at <= self._short_ack_repeat_window
+            )
+            self._last_short_ack = spoken
+            self._last_short_ack_at = now
+            if repeated:
+                return AudioClassification.SUSPICIOUS
+            if now < self._window_until and _recent_assistant_supports_short_reply(chat_history):
+                return AudioClassification.ASSISTANT
+            return AudioClassification.SUSPICIOUS
+
         if time.time() < self._window_until:
             return AudioClassification.ASSISTANT
         return await self._llm_classify(text, chat_history)
 
     async def _llm_classify(self, text: str, chat_history: list[dict]) -> AudioClassification:
-        recent = "\n".join(f"{m['role']}: {m['content']}" for m in chat_history[-3:])
+        recent = _recent_context(chat_history)
         prompt = (
             f"角色名: {self._char_name}\n"
             f"最近对话:\n{recent}\n\n"
@@ -181,8 +280,9 @@ class Classifier:
                     messages=[{"role": "user", "content": prompt}],
                 )
                 result = (resp.choices[0].message.content or "").strip().lower()
-        except Exception:  # noqa: BLE001
-            return AudioClassification.ASSISTANT  # 出错保守走反应路径
+        except Exception as e:  # noqa: BLE001
+            log.warning("音频对象分类失败，忽略本段避免误打扰: %s", e)
+            return AudioClassification.IGNORE
 
         if result.startswith("other"):
             return AudioClassification.OTHER
@@ -213,6 +313,11 @@ class MicInput:
         self._muted_until = 0.0  # 播放结束后的静音截止时间
         self._sr = config.get("perception.audio.sample_rate", 16000)
         self._device = config.get("perception.audio.device_index", None)
+        self._suspicious_repeat_window = config.get(
+            "perception.audio.suspicious_repeat_window_s", 20
+        )
+        self._pending_suspicious_text = ""
+        self._pending_suspicious_at = 0.0
         self._chat_history: list[dict] = []
         self._running = False
 
@@ -314,8 +419,28 @@ class MicInput:
         print(f"\n  [STT] {text}")
         cls = await self._classifier.classify(text, self._chat_history)
         if cls == AudioClassification.ASSISTANT:
+            self._pending_suspicious_text = ""
+            self._pending_suspicious_at = 0.0
             self._classifier.open_window()
-            await self._enqueue(user_speech(text))
+            await self._enqueue(user_speech(text, source="microphone"))
+        elif cls == AudioClassification.SUSPICIOUS:
+            now = time.time()
+            spoken = _spoken_text(text).casefold()
+            repeated = (
+                spoken == self._pending_suspicious_text
+                and now - self._pending_suspicious_at <= self._suspicious_repeat_window
+            )
+            if repeated:
+                self._pending_suspicious_text = ""
+                self._pending_suspicious_at = 0.0
+                log.info("短音频连续出现，进入待确认反应: %s", text)
+                await self._enqueue(user_speech(
+                    text, source="microphone", uncertain_audio=True,
+                ))
+            else:
+                self._pending_suspicious_text = spoken
+                self._pending_suspicious_at = now
+                log.info("短音频含义不明，暂不打扰并等待是否重复: %s", text)
         elif cls in (AudioClassification.OTHER, AudioClassification.SELF):
             await self._enqueue(Event(
                 priority=EventPriority.NORMAL,

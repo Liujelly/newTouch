@@ -501,6 +501,9 @@ class Orchestrator:
         user_text = (event.payload.get("text") or "").strip()
         if not user_text:
             return
+        if event.payload.get("source") == "microphone" and event.payload.get("uncertain_audio"):
+            await self._handle_uncertain_audio(user_text)
+            return
         if self._speaker.is_speaking():
             self._speaker.interrupt()
 
@@ -576,6 +579,115 @@ class Orchestrator:
         # 不阻塞下一轮对话。最多晚几秒情绪才更新，对陪伴体可接受。失败静默不改情绪。
         if reply:
             asyncio.create_task(self._apply_emotion_from_reply(user_text, reply))
+
+    async def _handle_uncertain_audio(self, heard_text: str) -> None:
+        """连续出现的孤立短音频：只确认意图，不按真实互动更新状态。"""
+        if self._speaker.is_speaking():
+            self._speaker.interrupt()
+
+        preset = load_preset(self._cfg)
+        reply_lang, translation_lang = self._get_reply_lang_config()
+        voice_emotions = load_voice_emotions(self._cfg)
+        face_emotions = self._face_emotions()
+        recent_reply = next((
+            message.get("content", "") for message in reversed(self._chat_history)
+            if message.get("role") == "assistant"
+        ), "")
+
+        async with self._cognition_lock:
+            raw = await self._cognition.respond_to_uncertain_audio(
+                self._card, self._user_name, heard_text, self._chat_history,
+                preset=preset,
+                reply_lang=reply_lang,
+                translation_lang=translation_lang,
+                voice_emotions=voice_emotions,
+                face_emotions=face_emotions,
+                time_context=_time_context(datetime.now()),
+                avoid_reply=recent_reply,
+            )
+
+        emotion, face, reply = self._split_reply_metadata(raw)
+        threshold = self._cfg.get("perception.audio.reactive_repeat_threshold", 0.6)
+        if recent_reply and self._similarity(reply, recent_reply) >= threshold:
+            log.info("可疑音频回复与上一轮相似，重新生成确认句")
+            async with self._cognition_lock:
+                raw = await self._cognition.respond_to_uncertain_audio(
+                    self._card, self._user_name, heard_text, self._chat_history,
+                    preset=preset,
+                    reply_lang=reply_lang,
+                    translation_lang=translation_lang,
+                    voice_emotions=voice_emotions,
+                    face_emotions=face_emotions,
+                    time_context=_time_context(datetime.now()),
+                    avoid_reply=reply or recent_reply,
+                )
+            emotion, face, reply = self._split_reply_metadata(raw)
+
+        if recent_reply and self._similarity(reply, recent_reply) >= threshold:
+            log.info("可疑音频确认连续两次仍与上一轮相似，保持沉默避免复读")
+            reply = ""
+
+        if not reply:
+            self._log.record(
+                trigger="麦克风·存疑", action="silent", text=heard_text,
+                emotion=self._state.snapshot(), gate="短音频含义不明，确认生成失败",
+            )
+            return
+
+        async def _once():
+            yield reply
+
+        self._log.record(
+            trigger="麦克风·存疑", action="speak", text=reply,
+            emotion=self._state.snapshot(), gate="未按真实互动更新状态",
+        )
+        self._log_chat("assistant", reply)
+        await self._speaker.speak(
+            _once(), emotion=emotion, face=face,
+            translation_lang=translation_lang,
+        )
+        self._chat_history.append({
+            "role": "user",
+            "content": f"（麦克风可能误收录到：{heard_text}）",
+            "ts": datetime.now().isoformat(timespec="seconds"),
+        })
+        self._chat_history.append({
+            "role": "assistant", "content": reply,
+            "ts": datetime.now().isoformat(timespec="seconds"),
+        })
+        await self._compact_history()
+
+    @staticmethod
+    def _similarity(left: str, right: str) -> float:
+        left_clean = Orchestrator._normalize_for_compare(left)
+        right_clean = Orchestrator._normalize_for_compare(right)
+        if not left_clean or not right_clean:
+            return 0.0
+        return SequenceMatcher(None, left_clean, right_clean).ratio()
+
+    @staticmethod
+    def _split_reply_metadata(raw: str) -> tuple[str | None, str | None, str]:
+        from .action.speak import (
+            parse_emotion_prefix, parse_face_prefix, strip_all_emotion_tags,
+        )
+
+        text = strip_leading_time_marker(raw or "")
+        emotion = None
+        face = None
+        for _ in range(6):
+            text = text.lstrip()
+            parsed_emotion, after_emotion = parse_emotion_prefix(text)
+            if parsed_emotion is not None:
+                emotion = parsed_emotion
+                text = strip_leading_time_marker(after_emotion)
+                continue
+            parsed_face, after_face = parse_face_prefix(text)
+            if parsed_face is not None:
+                face = parsed_face
+                text = strip_leading_time_marker(after_face)
+                continue
+            break
+        return emotion, face, strip_all_emotion_tags(text).strip()
 
     async def _speak_reviewed(self, stream, translation_lang: str, on_text=None) -> str:
         """审查机制下的回复播报（v2.68）：缓存全文->机械审查->不合格调 LLM 修正->_once 播。

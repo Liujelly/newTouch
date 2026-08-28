@@ -231,6 +231,12 @@ def get_config_schema() -> list:
         ]},
         {"section": "感知层", "key": "perception", "fields": [
             {"k": "audio.enabled", "label": "启用麦克风", "type": "toggle", "restart": True},
+            {"k": "audio.suspicious_repeat_window_s", "label": "可疑短音频重复窗口(秒)",
+             "type": "number", "min": 3, "max": 120, "restart": True,
+             "help": "缺少近期对话承接的嗯/Yeah等短音频第一次不会打扰；在此时间内再次出现才询问是否在说话（默认20）"},
+            {"k": "audio.reactive_repeat_threshold", "label": "存疑回复去重阈值",
+             "type": "number", "min": 0.3, "max": 1, "step": 0.05,
+             "help": "确认短音频时若回复与上一轮相似度达到此值，会重写；仍重复则保持沉默（默认 0.60）"},
             {"k": "vision.enabled", "label": "启用摄像头", "type": "toggle"},
             {"k": "vision.camera_index", "label": "摄像头编号", "type": "number", "min": 0, "max": 9, "restart": True},
             {"k": "vision.frame_diff_threshold", "label": "帧差阈值（普通变化）", "type": "number",
