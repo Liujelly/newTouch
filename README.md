@@ -260,7 +260,3 @@ python tests/test_vision_tools.py
 python -m tests.test_proactive_cot
 python -m tests.test_recent_inner_time
 ```
-
-## 文档
-
-本地开发工作区中的 `docs/` 包含架构设计、决策记录、Token 密集型优化方案和详细版本进度。该目录按项目约定不提交 Git，因此 README 保持为仓库内可追踪的项目入口，详细开发记录以本地 `docs/进度.md` 为准。
