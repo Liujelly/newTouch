@@ -261,6 +261,10 @@ class Speaker:
         self._cur_emotion: str | None = None  # 本轮回复的语音语气（决定参考音频）
         self._cur_face: str | None = None  # 本轮回复的立绘表情（驱动浮窗换图）
         self._broadcaster = None  # FaceBroadcaster，注入后把 face 推给立绘浮窗
+        self._defer_visual_start = False
+        self._visual_started = True
+        self._pending_face = False
+        self._pending_visual_text: list[str] = []
 
     def set_emotion_broadcaster(self, broadcaster) -> None:
         """注入立绘 face 广播器（main.py 接线）。None 时不广播，向后兼容。"""
@@ -296,6 +300,12 @@ class Speaker:
         self._speaking = True
         self._cur_emotion = emotion  # 主动路径显式传；反应路径下面从标签解析覆盖
         self._cur_face = face  # 主动路径显式传；反应路径下面从标签解析覆盖
+        tts_on = self._t("enabled", True)
+        # TTS 模式先缓存立绘和气泡，首句音频合成完成时再一起放出，避免画面先演几秒。
+        self._defer_visual_start = bool(tts_on)
+        self._visual_started = not tts_on
+        self._pending_face = False
+        self._pending_visual_text = []
         # 主动路径显式传了 face 就立即广播（不等流）；反应路径由 _strip_emotion_stream 解析后广播
         if face is not None:
             self._broadcast_face()
@@ -307,7 +317,6 @@ class Speaker:
         has_translation = bool((translation_lang or "").strip())
         text_stream = self._bubble_stream(text_stream, has_translation)
         full: list[str] = []
-        tts_on = self._t("enabled", True)
         fired = False
 
         def _fire() -> None:
@@ -355,18 +364,24 @@ class Speaker:
                     _fire()                # 全文已读完，立即通知（播放可能还在进行）
 
             async def _consumer() -> None:
+                first_sentence = True
                 while True:
                     sentence = await queue.get()
                     if sentence is None:
                         break
                     if self._interrupt.is_set():
                         continue  # 排空队列直到哨兵，不再播放
-                    await self._synth_and_play(sentence)
+                    await self._synth_and_play(
+                        sentence,
+                        on_audio_ready=self._release_visual_start if first_sentence else None,
+                    )
+                    first_sentence = False
 
             await asyncio.gather(_producer(), _consumer())
         finally:
             _fire()  # 兜底：异常路径也确保回调触发一次
             self._finalize_face(full)  # 无 face 时从全文扫补广播，仍无则 neutral
+            await self._release_visual_start()  # 空回复/TTS失败也不能让画面一直被扣住
             self._broadcast_text_end()  # 通知浮窗回复结束，启动气泡淡出
             self._speaking = False
         # 最终清理：移除全文中所有残留的 <emo:xxx>/<face:xxx> 标签（LLM 可能在末尾/中间误输出）
@@ -447,6 +462,9 @@ class Speaker:
 
     def _broadcast_face(self) -> None:
         """把当前 _cur_face 推给立绘浮窗（异步广播，失败静默）。"""
+        if self._defer_visual_start and not self._visual_started:
+            self._pending_face = True
+            return
         b = self._broadcaster
         if b is None:
             return
@@ -471,12 +489,37 @@ class Speaker:
 
     def _broadcast_text(self, text: str) -> None:
         """把一段增量文本推给立绘浮窗气泡（逐 chunk 流式追加）。失败静默。"""
+        if self._defer_visual_start and not self._visual_started:
+            if text:
+                self._pending_visual_text.append(text)
+            return
         b = self._broadcaster
         if b is None or not text:
             return
         try:
             asyncio.create_task(b.push_text(text, self._name))
         except RuntimeError:
+            pass
+
+    async def _release_visual_start(self) -> None:
+        """首句音频就绪后释放缓存的立绘和文字，随后调用方立即开始播放。"""
+        if self._visual_started:
+            return
+        self._visual_started = True
+        self._defer_visual_start = False
+        b = self._broadcaster
+        pending_text = "".join(self._pending_visual_text)
+        self._pending_visual_text = []
+        pending_face = self._pending_face
+        self._pending_face = False
+        if b is None:
+            return
+        try:
+            if pending_face:
+                await b.push(self._cur_face or "neutral", self._name)
+            if pending_text:
+                await b.push_text(pending_text, self._name)
+        except (ConnectionError, OSError, RuntimeError):
             pass
 
     def _broadcast_text_end(self) -> None:
@@ -525,19 +568,28 @@ class Speaker:
                 # 括号外的原文不推气泡
             yield chunk
 
-    async def _synth_and_play(self, sentence: str) -> None:
+    async def _synth_and_play(self, sentence: str, on_audio_ready=None) -> None:
         # TTS 用：剥括号动作/翻译 + emo/face 标签（语音不读这些）。气泡增量已由 _bubble_stream 流式推。
         sentence = _strip_actions(sentence)
         sentence = strip_all_emotion_tags(sentence)
         if not sentence:
+            if on_audio_ready:
+                await on_audio_ready()
             return
+        released = False
         try:
             audio = await self._tts_request(sentence)
+            if on_audio_ready:
+                await on_audio_ready()
+                released = True
             if audio and not self._interrupt.is_set():
                 await self._play(audio)
         except Exception as e:  # noqa: BLE001
-            print(f"  💬 {sentence}   [TTS失败: {e}]")
+            print(f"  [TTS失败] {sentence}: {e}")
             log.error("TTS 失败（%s）: %s", sentence, e)
+        finally:
+            if on_audio_ready and not released:
+                await on_audio_ready()
 
     def _ref_for_emotion(self) -> tuple[str, str, str]:
         """按本轮情绪从语音库选 (ref_audio_path, prompt_text, prompt_lang)。
