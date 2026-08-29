@@ -1188,7 +1188,6 @@ createApp({
       {k:'personality',label:'性格',multi:true,rows:3},
       {k:'scenario',label:'情境',multi:true,rows:2},
       {k:'system_prompt',label:'系统提示',multi:true,rows:3},
-      {k:'post_history_instructions',label:'历史后指令',multi:true,rows:2},
     ]
     async function loadCardList() {
       cardList.value = await fetch('/api/characters').then(r=>r.json())
