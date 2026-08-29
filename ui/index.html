@@ -875,7 +875,7 @@ code{font-family:var(--mono);font-size:11.5px;background:rgba(64,158,255,.1);col
     </div>
 
   </div>
-  <div class="build-stamp">UI build · el-ui · 20260828j</div>
+  <div class="build-stamp">UI build · el-ui · 20260829a</div>
 </div>
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 <script>
@@ -975,6 +975,7 @@ createApp({
     const consFilter = ref('')
     const audit = ref([])
     const liveState = ref({})
+    let observeRefreshing = false
     const emoKeys = ['valence','arousal','attachment','worry','loneliness']
     const emoColors = {valence:'#818cf8',arousal:'#f59e0b',attachment:'#ec4899',worry:'#f87171',loneliness:'#64748b'}
     const cards = reactive({emo:true,cons:true,audit:false,logs:true})
@@ -1004,10 +1005,19 @@ createApp({
     function emoColor(k) { return emoColors[k]||'#818cf8' }
     async function loadCons() {
       const qs = consFilter.value ? `?action=${consFilter.value}` : ''
-      cons.value = (await fetch('/api/observe/consciousness'+qs).then(r=>r.json())).reverse()
+      cons.value = (await fetch('/api/observe/consciousness'+qs,{cache:'no-store'}).then(r=>r.json())).reverse()
     }
     async function loadAudit() { audit.value=(await fetch('/api/observe/audit').then(r=>r.json())).reverse() }
-    async function loadState() { liveState.value=await fetch('/api/observe/state').then(r=>r.json()) }
+    async function loadState() { liveState.value=await fetch('/api/observe/state',{cache:'no-store'}).then(r=>r.json()) }
+    async function refreshObserve() {
+      if (observeRefreshing) return
+      observeRefreshing = true
+      try {
+        await Promise.all([loadState(), loadCons()])
+      } finally {
+        observeRefreshing = false
+      }
+    }
 
     // ── 结构化配置 ──────────────────────────────────────────
     const cfgRaw = ref({})
@@ -1591,7 +1601,10 @@ createApp({
 
     onMounted(() => {
       loadChat()
-      setInterval(loadState, 15000)
+      // 观测页自动刷新：仅停留在该页时，每 5 秒同步拉取情绪和意识流
+      setInterval(() => {
+        if (tab.value === 'observe') refreshObserve()
+      }, 5000)
       // 聊天实时轮询：语音/麦克风/主动发言下 ta 的新消息也能自动更新
       setInterval(async () => {
         if (tab.value !== 'chat' || sending) return   // 发送中不覆盖，避免抹掉乐观消息

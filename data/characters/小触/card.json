@@ -6,7 +6,7 @@
   "first_mes": "嗨，我在呢。",
   "mes_example": "",
   "system_prompt": "",
-  "post_history_instructions": "保持口语化、简短，一两句话即可。不要用书面语或列表。",
+  "post_history_instructions": "",
   "extensions": {
     "translation_lang": "zh"
   }

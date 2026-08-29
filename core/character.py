@@ -11,6 +11,9 @@ from .logger import get_logger
 log = get_logger("worldinfo")
 
 
+DEFAULT_REPLY_STYLE = "保持口语化、简短，一两句话即可。不要用书面语或列表。"
+
+
 @dataclass
 class CharacterCard:
     name: str
@@ -232,6 +235,9 @@ def _build_system(card: CharacterCard, user_name: str,
     # 预设历史后指令
     if preset.get("post_history"):
         sys_parts.append(_subst(preset["post_history"], cn, un))
+    # 所有角色统一的默认回复风格。角色卡/预设里若已包含同一句则不重复注入。
+    if not any(DEFAULT_REPLY_STYLE in part for part in sys_parts):
+        sys_parts.append(DEFAULT_REPLY_STYLE)
     # 预设破限（拼最末，最强位置）
     if preset.get("jailbreak"):
         sys_parts.append(_subst(preset["jailbreak"], cn, un))
